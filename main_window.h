@@ -37,4 +37,5 @@ private:
     QPushButton *sendBtn_;
     QCheckBox *hexCheck_;
     QCheckBox *sendHex_;
+    QByteArray buffer_;
 };

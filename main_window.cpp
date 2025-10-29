@@ -153,11 +153,34 @@ void MainWindow::sendCommand()
 
 void MainWindow::onDataReceived(const QByteArray &data)
 {
-    if (hexCheck_->isChecked()) {
-        QString hex = data.toHex(' ').toUpper();
-        log("RX: " + hex);
-    } else {
-        log("RX: " + QString::fromUtf8(data));
+    buffer_.append(data);
+
+    QByteArray line;
+    int splitIndex = -1;
+
+    // HEX MODE: tách theo 0x0A hoặc 0xDD
+    while (true) {
+        int idxLF = buffer_.indexOf(char(0x0A));  // '\n'
+        int idxETX = buffer_.indexOf(char(0xDD)); // ETX
+        if (idxLF == -1 && idxETX == -1)
+            break;
+
+        if (idxLF == -1)
+            splitIndex = idxETX;
+        else if (idxETX == -1)
+            splitIndex = idxLF;
+        else
+            splitIndex = std::min(idxLF, idxETX);
+
+        line = buffer_.left(splitIndex + 1);
+        buffer_.remove(0, splitIndex + 1);
+
+        if (hexCheck_->isChecked()) {
+            QString hex = line.toHex(' ').toUpper();
+            log("RX: " + hex);
+        } else {
+            log("RX: " + QString::fromUtf8(line));
+        }
     }
 }
 

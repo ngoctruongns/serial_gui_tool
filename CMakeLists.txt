@@ -15,16 +15,29 @@ if (WIN32)
     set(CMAKE_LINKER_FLAGS "")
 endif()
 
-find_package(Qt5 REQUIRED COMPONENTS Widgets SerialPort)
+find_package(Qt5 REQUIRED COMPONENTS Widgets SerialPort Charts)
 
-add_executable(${PROJECT_NAME}
+set(HEADER
+    main_window.h
+    serial_worker.h
+    plot_widget.h
+)
+
+set(SOURCES
     main.cpp
     main_window.cpp
-    main_window.h
     serial_worker.cpp
-    serial_worker.h
+    plot_widget.cpp
+)
+
+add_executable(${PROJECT_NAME}
+    ${HEADER}
+    ${SOURCES}
 )
 
 target_link_libraries(${PROJECT_NAME}
-    PRIVATE Qt5::Widgets Qt5::SerialPort
+    PRIVATE
+    Qt5::Widgets
+    Qt5::SerialPort
+    Qt5::Charts
 )

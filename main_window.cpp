@@ -8,19 +8,24 @@
 #include <QSerialPortInfo>
 #include <QTextEdit>
 #include <QVBoxLayout>
+#include <QDebug>
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
 {
     QWidget *central = new QWidget(this);
     QVBoxLayout *vbox = new QVBoxLayout(central);
 
-    // Cấu hình GUI
+    // Create UI elements
     portCombo_ = new QComboBox(this);
     baudCombo_ = new QComboBox();
+    loadBtn_ = new QPushButton("Find Port");
     openBtn_ = new QPushButton("Open");
     closeBtn_ = new QPushButton("Close");
     sendBtn_ = new QPushButton("Send");
+    searchBtn_ = new QPushButton("Search");
+    clearBtn_ = new QPushButton("Clear All");
     commandLine_ = new QLineEdit(this);
+    searchLine_ = new QLineEdit(this);
     logView_ = new QTextEdit(this);
     logView_->setReadOnly(true);
     hexCheck_ = new QCheckBox("HEX Mode");
@@ -43,6 +48,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     portLabel->setMaximumWidth(50);
 
     h1->addWidget(portCombo_);
+    h1->addWidget(loadBtn_);
     h1->addSpacing(20); // Add small space between port and baud
 
     QLabel *baudLabel = new QLabel("Baud:");
@@ -56,16 +62,16 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     h1->addWidget(openBtn_);
     h1->addWidget(closeBtn_);
 
-    QHBoxLayout *h2 = new QHBoxLayout();
-    h2->setSpacing(4);
-    h2->setContentsMargins(2, 2, 2, 2);
-
-    h2->addWidget(commandLine_);
-    h2->addWidget(sendHex_);
-    h2->addWidget(sendBtn_);
+    QGridLayout *g = new QGridLayout;
+    g->addWidget(commandLine_, 0, 0);
+    g->addWidget(sendHex_, 0, 1);
+    g->addWidget(sendBtn_, 0, 2);
+    g->addWidget(searchLine_, 1, 0);
+    g->addWidget(searchBtn_, 1, 1);
+    g->addWidget(clearBtn_, 1, 2);
 
     vbox->addLayout(h1);
-    vbox->addLayout(h2);
+    vbox->addLayout(g);
     vbox->addWidget(logView_);
 
     setCentralWidget(central);
@@ -74,16 +80,24 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     // --- Create worker BEFORE any connect involving it ---
     worker_ = new SerialWorker(this); // parent = this, no manual delete needed
 
-    // Kết nối tín hiệu
+    // --- Create plot widget ---
+    plotter_ = new PlotWidget(this);
+    plotter_->setMinimumHeight(400);
+    vbox->addWidget(plotter_);
+
+    // Connect signals and slots
+    connect(loadBtn_, &QPushButton::clicked, this, [this](void) { updatePortList(); });
     connect(openBtn_, &QPushButton::clicked, this, &MainWindow::openSerial);
     connect(closeBtn_, &QPushButton::clicked, this, &MainWindow::closeSerial);
     connect(sendBtn_, &QPushButton::clicked, this, &MainWindow::sendCommand);
+    connect(clearBtn_, &QPushButton::clicked, this, &MainWindow::clearLog);
 
     connect(worker_, &SerialWorker::dataReceived, this, &MainWindow::onDataReceived);
     connect(worker_, &SerialWorker::errorOccurred, this, &MainWindow::onError);
 
     closeBtn_->setEnabled(false);
     updatePortList();
+    initFlag_ = true;
 }
 
 MainWindow::~MainWindow()
@@ -115,6 +129,9 @@ void MainWindow::openSerial()
         log("Opened " + port + " at " + QString::number(baud) + " baud.");
         openBtn_->setEnabled(false);
         closeBtn_->setEnabled(true);
+
+        // Clear log, buffer and plot
+        clearLog();
     }
 }
 
@@ -153,6 +170,11 @@ void MainWindow::sendCommand()
 
 void MainWindow::onDataReceived(const QByteArray &data)
 {
+    if (initFlag_) {
+        initFlag_ = false;
+        return;
+    }
+
     buffer_.append(data);
 
     QByteArray line;
@@ -180,7 +202,30 @@ void MainWindow::onDataReceived(const QByteArray &data)
             log("RX: " + hex);
         } else {
             log("RX: " + QString::fromUtf8(line));
+            if (line.endsWith('\n')) {
+                QString strLine = QString::fromUtf8(line).trimmed();
+                onDataPlotter(strLine);
+            }
         }
+    }
+}
+
+void MainWindow::onDataPlotter(const QString &line)
+{
+    // Parse as Arduino type: "sensor1:23.5,sensor2:45.6,sensor3:78.9\n"
+    QMap<QString, double> values;
+    QStringList parts = line.split(',', Qt::SkipEmptyParts);
+    for (const QString &part : parts) {
+        qDebug() << part << "\n";
+        QStringList kv = part.split(':');
+        if (kv.size() == 2) {
+            QString key = kv[0];
+            double val = kv[1].toDouble();
+            values[key] = val;
+        }
+    }
+    if (!values.isEmpty()) {
+        plotter_->updateData(values);
     }
 }
 
@@ -192,4 +237,12 @@ void MainWindow::onError(const QString &msg)
 void MainWindow::log(const QString &msg)
 {
     logView_->append(msg);
+}
+
+void MainWindow::clearLog()
+{
+    logView_->clear();
+    buffer_.clear();
+    plotter_->plotClear();
+    initFlag_ = true;
 }

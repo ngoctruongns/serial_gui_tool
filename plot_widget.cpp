@@ -47,3 +47,14 @@ void PlotWidget::plotClear()
     axisX_->setRange(0, 100);
     axisY_->setRange(0, 100);
 }
+
+// ========== PlotWindow ========== //
+
+PlotWindow::PlotWindow(QWidget *parent)
+    : QMainWindow(parent),
+      plotWidget_(new PlotWidget(this))
+{
+    setCentralWidget(plotWidget_);
+    setWindowTitle("Plot Viewer");
+    resize(700, 400);
+}

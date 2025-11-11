@@ -14,6 +14,7 @@ public:
     void closePort();
     bool sendData(const QByteArray &data);
     bool isOpen() const { return serial_.isOpen(); }
+    void clearBuffer();
 
 signals:
     void dataReceived(const QByteArray &data);

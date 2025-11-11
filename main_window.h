@@ -6,6 +6,9 @@
 #include "plot_widget.h"
 
 class QTextEdit;
+class QPlainTextEdit;
+class QCompleter;
+class QTimer;
 class QPushButton;
 class QComboBox;
 class QLineEdit;
@@ -17,23 +20,39 @@ public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
+signals:
+    void newSerialData(const QMap<QString, double> &values);
+    void clearData(void);
+
 private slots:
     void openSerial();
     void closeSerial();
     void sendCommand();
     void onDataReceived(const QByteArray &data);
     void onError(const QString &msg);
+    void searchLog();
+    void searchUp();
+    void searchDown();
+    void openFile();
+    void saveFile();
+    void exitApp();
+    void onShowPlotTriggered();
+    void clearLogs();
 
     private:
     void updatePortList();
     void log(const QString &msg);
     void onDataPlotter(const QString &line);
     void clearLog();
-    // void searchInLog(const QString &searchStr);
+    void updateCompleter();
+    void highlightSearchResults(const QString &term);
+    void timerHandler();
+    void showMessageAutoClose(const QString &title, const QString &msg, int timeoutMs = 2000);
+    void setupUi();
 
+    bool initFlag_;
     SerialWorker *worker_;
-    PlotWidget *plotter_;
-    QTextEdit *logView_;
+    QPlainTextEdit *logView_;
     QComboBox *portCombo_;
     QComboBox *baudCombo_;
     QLineEdit *commandLine_;
@@ -42,10 +61,14 @@ private slots:
     QPushButton *openBtn_;
     QPushButton *closeBtn_;
     QPushButton *sendBtn_;
-    QPushButton *searchBtn_;
+    QPushButton *searchUpBtn_;
+    QPushButton *searchDownBtn_;
     QPushButton *clearBtn_;
     QCheckBox *hexCheck_;
     QCheckBox *sendHex_;
     QByteArray buffer_;
-    bool initFlag_;
+    QCompleter *completer_;
+    QTimer *timer_;
+
+    PlotWindow* plotWindow_ = nullptr;
 };

@@ -26,6 +26,8 @@ set(HEADER
 set(SOURCES
     main.cpp
     main_window.cpp
+    main_window_ui.cpp
+    search_helper.cpp
     serial_worker.cpp
     plot_widget.cpp
 )

@@ -54,3 +54,11 @@ void SerialWorker::handleReadyRead()
     QByteArray data = serial_.readAll();
     emit dataReceived(data);
 }
+
+void SerialWorker::clearBuffer()
+{
+    if (serial_.isOpen()) {
+        serial_.clear(QSerialPort::Input);
+        serial_.clear(QSerialPort::Output);
+    }
+}

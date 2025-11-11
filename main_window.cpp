@@ -1,5 +1,11 @@
 #include "main_window.h"
+#include <QApplication>
 #include <QComboBox>
+#include <QDateTime>
+#include <QDebug>
+#include <QFile>
+#include <QDir>
+#include <QFileDialog>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -7,91 +13,56 @@
 #include <QPushButton>
 #include <QSerialPortInfo>
 #include <QTextEdit>
+#include <QTextStream>
 #include <QVBoxLayout>
-#include <QDebug>
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
 {
-    QWidget *central = new QWidget(this);
-    QVBoxLayout *vbox = new QVBoxLayout(central);
+    // File menu: Open / Save / Exit
+    QMenu *fileMenu = menuBar()->addMenu(tr("&File"));
+    QAction *openAction = new QAction(tr("Open"), this);
+    QAction *saveAction = new QAction(tr("Save"), this);
+    QAction *clearLogsAction = new QAction(tr("Clear Log Files"), this);
+    QAction *exitAction = new QAction(tr("Exit"), this);
+    // Standard shortcuts
+    openAction->setShortcut(QKeySequence::Open);
+    saveAction->setShortcut(QKeySequence::Save);
+    clearLogsAction->setShortcut(QKeySequence("Ctrl+Shift+D"));
+    exitAction->setShortcut(QKeySequence::Quit);
+    fileMenu->addAction(openAction);
+    fileMenu->addAction(saveAction);
+    fileMenu->addAction(clearLogsAction);
+    fileMenu->addSeparator();
+    fileMenu->addAction(exitAction);
 
-    // Create UI elements
-    portCombo_ = new QComboBox(this);
-    baudCombo_ = new QComboBox();
-    loadBtn_ = new QPushButton("Find Port");
-    openBtn_ = new QPushButton("Open");
-    closeBtn_ = new QPushButton("Close");
-    sendBtn_ = new QPushButton("Send");
-    searchBtn_ = new QPushButton("Search");
-    clearBtn_ = new QPushButton("Clear All");
-    commandLine_ = new QLineEdit(this);
-    searchLine_ = new QLineEdit(this);
-    logView_ = new QTextEdit(this);
-    logView_->setReadOnly(true);
-    hexCheck_ = new QCheckBox("HEX Mode");
-    sendHex_ = new QCheckBox("Send HEX", this);
-    sendHex_->setToolTip("Send data as hex instead of UTF-8");
+    // View menu: Show / Close Plot
+    QMenu *viewMenu = menuBar()->addMenu(tr("&View"));
+    QAction *showPlotAction = new QAction(tr("Show Plot"), this);
+    QAction *closePlotAction = new QAction(tr("Close Plot"), this);
+    // Shortcuts for view actions
+    showPlotAction->setShortcut(QKeySequence("Ctrl+Shift+P"));
+    closePlotAction->setShortcut(QKeySequence("Ctrl+Shift+W"));
+    viewMenu->addAction(showPlotAction);
+    viewMenu->addAction(closePlotAction);
 
-    // Populate baud rates
-    const QList<int> baudRates = {9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600};
-    for (int b : baudRates)
-        baudCombo_->addItem(QString::number(b), b);
-    baudCombo_->setCurrentText("115200");
-
-    QHBoxLayout *h1 = new QHBoxLayout();
-    h1->setSpacing(5);
-    h1->setContentsMargins(5, 5, 5, 5);
-
-    QLabel *portLabel = new QLabel("Port:");
-    h1->addWidget(portLabel);
-    portLabel->setMinimumWidth(30);
-    portLabel->setMaximumWidth(50);
-
-    h1->addWidget(portCombo_);
-    h1->addWidget(loadBtn_);
-    h1->addSpacing(20); // Add small space between port and baud
-
-    QLabel *baudLabel = new QLabel("Baud:");
-    h1->addWidget(baudLabel);
-    baudLabel->setMinimumWidth(30);
-    baudLabel->setMaximumWidth(50);
-
-    h1->addWidget(baudCombo_);
-    h1->addSpacing(10);
-    h1->addWidget(hexCheck_);
-    h1->addWidget(openBtn_);
-    h1->addWidget(closeBtn_);
-
-    QGridLayout *g = new QGridLayout;
-    g->addWidget(commandLine_, 0, 0);
-    g->addWidget(sendHex_, 0, 1);
-    g->addWidget(sendBtn_, 0, 2);
-    g->addWidget(searchLine_, 1, 0);
-    g->addWidget(searchBtn_, 1, 1);
-    g->addWidget(clearBtn_, 1, 2);
-
-    vbox->addLayout(h1);
-    vbox->addLayout(g);
-    vbox->addWidget(logView_);
-
-    setCentralWidget(central);
-    setWindowTitle("Serial GUI Tool");
-
-    // --- Create worker BEFORE any connect involving it ---
+    // Build UI in separate function to keep constructor short
+    setupUi();
+    connect(openAction, &QAction::triggered, this, &MainWindow::openFile);
+    connect(saveAction, &QAction::triggered, this, &MainWindow::saveFile);
+    connect(clearLogsAction, &QAction::triggered, this, &MainWindow::clearLogs);
+    connect(exitAction, &QAction::triggered, this, &MainWindow::exitApp);
+    // Create worker AFTER UI is setup
     worker_ = new SerialWorker(this); // parent = this, no manual delete needed
+    connect(timer_, &QTimer::timeout, this, &MainWindow::timerHandler);
 
-    // --- Create plot widget ---
-    plotter_ = new PlotWidget(this);
-    plotter_->setMinimumHeight(400);
-    vbox->addWidget(plotter_);
+    // View menu: Show / Close Plot
+    connect(showPlotAction, &QAction::triggered, this, &MainWindow::onShowPlotTriggered);
+    connect(closePlotAction, &QAction::triggered, this, [this]() {
+        if (plotWindow_)
+            plotWindow_->close();
+    });
 
-    // Connect signals and slots
-    connect(loadBtn_, &QPushButton::clicked, this, [this](void) { updatePortList(); });
-    connect(openBtn_, &QPushButton::clicked, this, &MainWindow::openSerial);
-    connect(closeBtn_, &QPushButton::clicked, this, &MainWindow::closeSerial);
-    connect(sendBtn_, &QPushButton::clicked, this, &MainWindow::sendCommand);
-    connect(clearBtn_, &QPushButton::clicked, this, &MainWindow::clearLog);
-
+    // Serial worker signals
     connect(worker_, &SerialWorker::dataReceived, this, &MainWindow::onDataReceived);
     connect(worker_, &SerialWorker::errorOccurred, this, &MainWindow::onError);
 
@@ -130,8 +101,9 @@ void MainWindow::openSerial()
         openBtn_->setEnabled(false);
         closeBtn_->setEnabled(true);
 
-        // Clear log, buffer and plot
-        clearLog();
+        // Clear log, buffer and plot, serial buffer
+        // clearLog();
+        worker_->clearBuffer();
     }
 }
 
@@ -201,9 +173,9 @@ void MainWindow::onDataReceived(const QByteArray &data)
             QString hex = line.toHex(' ').toUpper();
             log("RX: " + hex);
         } else {
-            log("RX: " + QString::fromUtf8(line));
+            QString strLine = QString::fromUtf8(line).trimmed();
+            log("RX: " + strLine);
             if (line.endsWith('\n')) {
-                QString strLine = QString::fromUtf8(line).trimmed();
                 onDataPlotter(strLine);
             }
         }
@@ -216,7 +188,10 @@ void MainWindow::onDataPlotter(const QString &line)
     QMap<QString, double> values;
     QStringList parts = line.split(',', Qt::SkipEmptyParts);
     for (const QString &part : parts) {
-        qDebug() << part << "\n";
+        // qDebug() << part << "\n";
+        // Check for key:value format
+        if (part.count(':') != 1)
+            continue;
         QStringList kv = part.split(':');
         if (kv.size() == 2) {
             QString key = kv[0];
@@ -225,7 +200,7 @@ void MainWindow::onDataPlotter(const QString &line)
         }
     }
     if (!values.isEmpty()) {
-        plotter_->updateData(values);
+        emit newSerialData(values);
     }
 }
 
@@ -236,13 +211,249 @@ void MainWindow::onError(const QString &msg)
 
 void MainWindow::log(const QString &msg)
 {
-    logView_->append(msg);
+    logView_->appendPlainText(msg);
 }
 
 void MainWindow::clearLog()
 {
+    // If there's content, save it into ./log with default filename before clearing
+    QString contents = logView_->toPlainText();
+    if (!contents.isEmpty()) {
+        QDir d(QDir::currentPath());
+        if (!d.exists("log")) {
+            d.mkdir("log");
+        }
+        QString defaultName = QDateTime::currentDateTime().toString("yyMMdd_hhmmss");
+        QString filePath = d.filePath(QString("log/log_%1.txt").arg(defaultName));
+        QFile file(filePath);
+        if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            QTextStream out(&file);
+            out << contents;
+            file.close();
+        }
+    }
+
     logView_->clear();
     buffer_.clear();
-    plotter_->plotClear();
+    emit clearData();
     initFlag_ = true;
+}
+
+void MainWindow::openFile()
+{
+    QString path = QFileDialog::getOpenFileName(this, tr("Open Log File"), QString(),
+                                                tr("Text Files (*.txt);;All Files (*)"));
+    if (path.isEmpty())
+        return;
+
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QMessageBox::warning(this, tr("Open Failed"), tr("Unable to open file: %1").arg(path));
+        return;
+    }
+    QTextStream in(&file);
+    QString contents = in.readAll();
+    file.close();
+
+    logView_->setPlainText(contents);
+    // refresh completer and highlights
+    updateCompleter();
+    highlightSearchResults(searchLine_->text());
+}
+
+void MainWindow::saveFile()
+{
+    // Suggest default filename: log_yymmdd_hhmmss.txt
+    QString defaultName = QDateTime::currentDateTime().toString("yyMMdd_hhmmss");
+    defaultName = QString("log_%1.txt").arg(defaultName);
+    QString path = QFileDialog::getSaveFileName(this, tr("Save Log File"), defaultName,
+                                                tr("Text Files (*.txt);;All Files (*)"));
+    if (path.isEmpty())
+        return;
+
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QMessageBox::warning(this, tr("Save Failed"), tr("Unable to save file: %1").arg(path));
+        return;
+    }
+    QTextStream out(&file);
+    out << logView_->toPlainText();
+    file.close();
+}
+
+void MainWindow::exitApp()
+{
+    // Close plot window if open, then quit
+    if (plotWindow_) {
+        plotWindow_->close();
+    }
+    qApp->quit();
+}
+
+void MainWindow::searchLog()
+{
+    QString text = searchLine_->text();
+    if (text.isEmpty())
+        return;
+
+    // Default behavior: find next occurrence from current cursor
+    if (logView_->find(text, QTextDocument::FindCaseSensitively)) {
+        logView_->setFocus();
+    } else {
+        // wrap-around: try from top once
+        logView_->moveCursor(QTextCursor::Start);
+        if (logView_->find(text, QTextDocument::FindCaseSensitively)) {
+            logView_->setFocus();
+        } else {
+            showMessageAutoClose("Search", "Text not found!", 1500);
+        }
+    }
+}
+
+void MainWindow::updateCompleter()
+{
+    QString allText = logView_->toPlainText();
+    QStringList words = allText.split(QRegExp("\\W+"), Qt::SkipEmptyParts);
+    words.removeDuplicates();
+
+    QCompleter *completer = new QCompleter(words, this);
+    completer->setCaseSensitivity(Qt::CaseInsensitive);
+    completer->setCompletionMode(QCompleter::PopupCompletion);
+    searchLine_->setCompleter(completer);
+
+    // Also update highlights for current search term
+    highlightSearchResults(searchLine_->text());
+}
+
+void MainWindow::highlightSearchResults(const QString &term)
+{
+    // Use extra selections so highlights are not permanent edits to the document
+    QList<QTextEdit::ExtraSelection> extras;
+    if (term.isEmpty()) {
+        logView_->setExtraSelections(extras);
+        return;
+    }
+
+    QTextDocument *doc = logView_->document();
+    QTextCursor cursor(doc);
+    QTextCharFormat fmt;
+    fmt.setBackground(Qt::yellow);
+
+    while (true) {
+        cursor = doc->find(term, cursor);
+        if (cursor.isNull())
+            break;
+        QTextEdit::ExtraSelection sel;
+        sel.cursor = cursor;
+        sel.format = fmt;
+        extras.append(sel);
+    }
+    logView_->setExtraSelections(extras);
+}
+
+void MainWindow::searchDown()
+{
+    QString term = searchLine_->text();
+    if (term.isEmpty())
+        return;
+
+    // Try to find next from current cursor; if not, wrap to start once
+    if (!logView_->find(term, QTextDocument::FindCaseSensitively)) {
+        logView_->moveCursor(QTextCursor::Start);
+        if (!logView_->find(term, QTextDocument::FindCaseSensitively)) {
+            showMessageAutoClose("Search", "Text not found!", 1500);
+            return;
+        }
+    }
+    logView_->setFocus();
+}
+
+void MainWindow::searchUp()
+{
+    QString term = searchLine_->text();
+    if (term.isEmpty())
+        return;
+
+    // Try to find previous from current cursor; if not, wrap to end once
+    if (!logView_->find(term, QTextDocument::FindBackward | QTextDocument::FindCaseSensitively)) {
+        logView_->moveCursor(QTextCursor::End);
+        if (!logView_->find(term,
+                            QTextDocument::FindBackward | QTextDocument::FindCaseSensitively)) {
+            showMessageAutoClose("Search", "Text not found!", 1500);
+            return;
+        }
+    }
+    logView_->setFocus();
+}
+
+void MainWindow::timerHandler()
+{
+    // Periodic tasks can be handled here
+}
+
+void MainWindow::showMessageAutoClose(const QString &title, const QString &msg, int timeoutMs)
+{
+    QMessageBox *msgBox = new QMessageBox(this);
+    msgBox->setWindowTitle(title);
+    msgBox->setText(msg);
+    msgBox->setStandardButtons(QMessageBox::NoButton);
+    msgBox->show();
+
+    QTimer::singleShot(timeoutMs, msgBox, &QMessageBox::accept);
+}
+
+void MainWindow::clearLogs()
+{
+    QDir logDir(QDir::currentPath() + "/log");
+
+    // Check if log directory exists
+    if (!logDir.exists()) {
+        showMessageAutoClose("Info", "Log directory does not exist.", 2000);
+        return;
+    }
+
+    // Get all .txt files in the log directory
+    QStringList filters;
+    filters << "*.txt";
+    logDir.setNameFilters(filters);
+    QFileInfoList files = logDir.entryInfoList();
+
+    if (files.isEmpty()) {
+        showMessageAutoClose("Info", "No log files to delete.", 2000);
+        return;
+    }
+
+    // Show confirmation dialog
+    int count = files.count();
+    QString message = QString("Delete %1 log file(s)?").arg(count);
+    QMessageBox::StandardButton reply = QMessageBox::question(this, "Confirm Delete", message,
+                                                               QMessageBox::Yes | QMessageBox::No);
+
+    if (reply != QMessageBox::Yes)
+        return;
+
+    // Delete files
+    int deletedCount = 0;
+    for (const QFileInfo &fileInfo : files) {
+        if (QFile::remove(fileInfo.absoluteFilePath())) {
+            deletedCount++;
+        }
+    }
+
+    showMessageAutoClose("Info", QString("Deleted %1 log file(s).").arg(deletedCount), 2000);
+}
+
+void MainWindow::onShowPlotTriggered()
+{
+    if (!plotWindow_) {
+        plotWindow_ = new PlotWindow(this);
+
+        connect(this, &MainWindow::newSerialData, plotWindow_->findChild<PlotWidget *>(),
+                &PlotWidget::updateData);
+        connect(this, &MainWindow::clearData, plotWindow_->findChild<PlotWidget *>(),
+                &PlotWidget::plotClear);
+    }
+    plotWindow_->show();
+    plotWindow_->raise();
+    plotWindow_->activateWindow();
 }

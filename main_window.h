@@ -12,6 +12,7 @@ class QTimer;
 class QPushButton;
 class QComboBox;
 class QLineEdit;
+class QDialog;
 
 class MainWindow : public QMainWindow
 {
@@ -33,11 +34,13 @@ private slots:
     void searchLog();
     void searchUp();
     void searchDown();
+    void onSearchReturnPressed();
     void openFile();
     void saveFile();
     void exitApp();
     void onShowPlotTriggered();
     void clearLogs();
+    void loadCommands();
 
     private:
     void updatePortList();
@@ -49,6 +52,14 @@ private slots:
     void timerHandler();
     void showMessageAutoClose(const QString &title, const QString &msg, int timeoutMs = 2000);
     void setupUi();
+    QString loadCommandsFromFile();
+    void saveCommandsToFile(const QString &content);
+    void updateCommandCompleter();
+    void addCommandToHistory(const QString &command);
+
+    // Track search state for Enter behavior in searchLine_
+    QString lastSearchTerm_;
+    bool searchReturnActive_ = false;
 
     bool initFlag_;
     SerialWorker *worker_;
@@ -61,6 +72,20 @@ private slots:
     QPushButton *openBtn_;
     QPushButton *closeBtn_;
     QPushButton *sendBtn_;
+    QPushButton *cmdLoadBtn_;
+    // Quick-send buttons: user-assignable shortcuts to send preset commands
+    QPushButton *quickBtn1_;
+    QPushButton *quickBtn2_;
+    QPushButton *quickBtn3_;
+    QPushButton *quickBtn4_;
+    QPushButton *quickBtn5_;
+    // Small edit buttons next to each quick-send button to configure the
+    // command string shown/sent when the quick button is pressed.
+    QPushButton *quickEditBtn1_;
+    QPushButton *quickEditBtn2_;
+    QPushButton *quickEditBtn3_;
+    QPushButton *quickEditBtn4_;
+    QPushButton *quickEditBtn5_;
     QPushButton *searchUpBtn_;
     QPushButton *searchDownBtn_;
     QPushButton *clearBtn_;
@@ -68,6 +93,7 @@ private slots:
     QCheckBox *sendHex_;
     QByteArray buffer_;
     QCompleter *completer_;
+    QCompleter *commandCompleter_;
     QTimer *timer_;
 
     PlotWindow* plotWindow_ = nullptr;

@@ -15,6 +15,8 @@
 #include <QTextEdit>
 #include <QTextStream>
 #include <QVBoxLayout>
+#include <QDialog>
+#include <QPlainTextEdit>
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
 {
@@ -53,6 +55,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     connect(exitAction, &QAction::triggered, this, &MainWindow::exitApp);
     // Create worker AFTER UI is setup
     worker_ = new SerialWorker(this); // parent = this, no manual delete needed
+
+    // Setup command completer from history
+    updateCommandCompleter();
     connect(timer_, &QTimer::timeout, this, &MainWindow::timerHandler);
 
     // View menu: Show / Close Plot
@@ -125,6 +130,9 @@ void MainWindow::sendCommand()
     QString cmd = commandLine_->text();
     if (cmd.isEmpty())
         return;
+
+    // Add command to history if it's not empty
+    addCommandToHistory(cmd);
 
     if (sendHex_->isChecked()) {
         // parse input string as hex
@@ -357,6 +365,12 @@ void MainWindow::searchDown()
     if (term.isEmpty())
         return;
 
+    // If this is the first search after pressing Enter, start from top
+    if (term != lastSearchTerm_) {
+        lastSearchTerm_ = term;
+        logView_->moveCursor(QTextCursor::Start);
+    }
+
     // Try to find next from current cursor; if not, wrap to start once
     if (!logView_->find(term, QTextDocument::FindCaseSensitively)) {
         logView_->moveCursor(QTextCursor::Start);
@@ -366,6 +380,27 @@ void MainWindow::searchDown()
         }
     }
     logView_->setFocus();
+}
+
+void MainWindow::onSearchReturnPressed()
+{
+    QString term = searchLine_->text();
+    if (term.isEmpty())
+        return;
+
+    // Just highlight all matches - don't jump to first occurrence
+    // Highlight is done by updateCompleter which is already connected to textChanged
+    highlightSearchResults(term);
+
+    // Show message if no matches found
+    QTextDocument *doc = logView_->document();
+    QTextCursor cursor(doc);
+    if (!doc->find(term, cursor).isNull()) {
+        // Found at least one match - ready for Up/Down navigation
+        lastSearchTerm_ = term;
+    } else {
+        showMessageAutoClose("Search", "Text not found!", 1500);
+    }
 }
 
 void MainWindow::searchUp()
@@ -441,6 +476,130 @@ void MainWindow::clearLogs()
     }
 
     showMessageAutoClose("Info", QString("Deleted %1 log file(s).").arg(deletedCount), 2000);
+}
+
+QString MainWindow::loadCommandsFromFile()
+{
+    QDir dir(QDir::currentPath());
+    if (!dir.exists("cmd")) {
+        dir.mkdir("cmd");
+    }
+
+    QString filePath = dir.filePath("cmd/command.txt");
+    QFile file(filePath);
+
+    if (!file.exists()) {
+        return QString(); // Return empty string if file doesn't exist
+    }
+
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QMessageBox::warning(this, "Error", "Unable to read command file: " + filePath);
+        return QString();
+    }
+
+    QTextStream in(&file);
+    QString content = in.readAll();
+    file.close();
+
+    return content;
+}
+
+void MainWindow::saveCommandsToFile(const QString &content)
+{
+    QDir dir(QDir::currentPath());
+    if (!dir.exists("cmd")) {
+        dir.mkdir("cmd");
+    }
+
+    QString filePath = dir.filePath("cmd/command.txt");
+    QFile file(filePath);
+
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QMessageBox::warning(this, "Error", "Unable to write to command file: " + filePath);
+        return;
+    }
+
+    QTextStream out(&file);
+    out << content;
+    file.close();
+}
+
+void MainWindow::loadCommands()
+{
+    // Create a dialog window for editing commands
+    QDialog *dialog = new QDialog(this);
+    dialog->setWindowTitle(tr("Edit Commands"));
+    dialog->setGeometry(100, 100, 600, 400);
+
+    QVBoxLayout *layout = new QVBoxLayout(dialog);
+
+    QLabel *label = new QLabel(tr("Enter commands (one per line):"));
+    layout->addWidget(label);
+
+    QPlainTextEdit *textEdit = new QPlainTextEdit(dialog);
+    textEdit->setPlainText(loadCommandsFromFile());
+    layout->addWidget(textEdit);
+
+    QHBoxLayout *buttonLayout = new QHBoxLayout();
+    QPushButton *saveBtn = new QPushButton(tr("Save"), dialog);
+    QPushButton *cancelBtn = new QPushButton(tr("Cancel"), dialog);
+
+    buttonLayout->addStretch();
+    buttonLayout->addWidget(saveBtn);
+    buttonLayout->addWidget(cancelBtn);
+    layout->addLayout(buttonLayout);
+
+    // Connect buttons
+    connect(saveBtn, &QPushButton::clicked, dialog, [this, textEdit, dialog]() {
+        saveCommandsToFile(textEdit->toPlainText());
+        showMessageAutoClose("Success", "Commands saved successfully.", 1500);
+        dialog->accept();
+    });
+
+    connect(cancelBtn, &QPushButton::clicked, dialog, &QDialog::reject);
+
+    dialog->exec();
+}
+
+void MainWindow::updateCommandCompleter()
+{
+    // Load commands from file
+    QString content = loadCommandsFromFile();
+    QStringList commands = content.split('\n', Qt::SkipEmptyParts);
+
+    // Remove duplicates and empty strings
+    commands.removeDuplicates();
+
+    // Create and set completer for commandLine_
+    commandCompleter_ = new QCompleter(commands, this);
+    commandCompleter_->setCaseSensitivity(Qt::CaseInsensitive);
+    commandCompleter_->setCompletionMode(QCompleter::PopupCompletion);
+    commandLine_->setCompleter(commandCompleter_);
+}
+
+void MainWindow::addCommandToHistory(const QString &command)
+{
+    // Load existing commands
+    QString content = loadCommandsFromFile();
+    QStringList commands = content.split('\n', Qt::SkipEmptyParts);
+
+    // Check if command already exists (case-insensitive)
+    bool exists = false;
+    for (const QString &cmd : commands) {
+        if (cmd.compare(command, Qt::CaseInsensitive) == 0) {
+            exists = true;
+            break;
+        }
+    }
+
+    // Add new command if it doesn't exist
+    if (!exists) {
+        commands.append(command);
+        saveCommandsToFile(commands.join('\n'));
+
+        // Update completer with new command
+        updateCommandCompleter();
+    }
 }
 
 void MainWindow::onShowPlotTriggered()

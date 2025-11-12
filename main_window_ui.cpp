@@ -45,9 +45,11 @@ void MainWindow::setupUi()
     searchLine_ = new QLineEdit(this);
     logView_ = new QPlainTextEdit(this);
     logView_->setReadOnly(false);
-    QFont font = logView_->font();
-    font.setPointSize(13);
-    logView_->setFont(font);
+    logView_->setStyleSheet("font-size: 22px;");
+    // logView_->setStyleSheet("background-color: black; color: white;");
+    // QFont font = logView_->font();
+    // font.setPointSize(13);
+    // logView_->setFont(font);
     hexCheck_ = new QCheckBox(tr("HEX"));
     sendHex_ = new QCheckBox(tr("HEX"), this);
     sendHex_->setToolTip(tr("Send data as hex instead of UTF-8"));

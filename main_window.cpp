@@ -229,6 +229,10 @@ void MainWindow::onError(const QString &msg)
 void MainWindow::log(const QString &msg)
 {
     logView_->insertPlainText(msg);
+    QTextCursor cursor = logView_->textCursor();
+    cursor.movePosition(QTextCursor::End);
+    logView_->setTextCursor(cursor);
+    logView_->ensureCursorVisible();
 }
 
 void MainWindow::clearLog()

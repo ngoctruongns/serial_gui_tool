@@ -69,7 +69,7 @@ private slots:
     void updateSearchMatches(const QString &term);
     void updateSearchCountLabel();
     void timerHandler();
-    void showMessageAutoClose(const QString &title, const QString &msg, int timeoutMs = 2000);
+    void showMessageAutoClose(const QString &title, const QString &msg, int timeoutMs = 1500);
     void setupUi();
     QString loadCommandsFromFile();
     void saveCommandsToFile(const QString &content);
@@ -95,12 +95,17 @@ private slots:
     QPushButton *closeBtn_;
     QPushButton *sendBtn_;
     QPushButton *cmdLoadBtn_;
-    // Quick-send buttons: user-assignable shortcuts to send preset commands
+    // Quick-send buttons: user-assignable shortcuts to send preset commands (10 buttons total)
     QPushButton *quickBtn1_;
     QPushButton *quickBtn2_;
     QPushButton *quickBtn3_;
     QPushButton *quickBtn4_;
     QPushButton *quickBtn5_;
+    QPushButton *quickBtn6_;
+    QPushButton *quickBtn7_;
+    QPushButton *quickBtn8_;
+    QPushButton *quickBtn9_;
+    QPushButton *quickBtn10_;
     // Small edit buttons next to each quick-send button to configure the
     // command string shown/sent when the quick button is pressed.
     QPushButton *quickEditBtn1_;
@@ -108,6 +113,16 @@ private slots:
     QPushButton *quickEditBtn3_;
     QPushButton *quickEditBtn4_;
     QPushButton *quickEditBtn5_;
+    QPushButton *quickEditBtn6_;
+    QPushButton *quickEditBtn7_;
+    QPushButton *quickEditBtn8_;
+    QPushButton *quickEditBtn9_;
+    QPushButton *quickEditBtn10_;
+    // Group labels for quick buttons
+    QString quickGroup1Label_;
+    QString quickGroup2Label_;
+    QGroupBox *quickGroup1Box_;
+    QGroupBox *quickGroup2Box_;
     QPushButton *searchUpBtn_;
     QPushButton *searchDownBtn_;
     QPushButton *clearBtn_;
@@ -123,9 +138,12 @@ private slots:
     // Settings
     int logFontSize_ = 22;
     QString eolMode_ = "\n";  // "\n" for LF, "\r\n" for CR+LF
+    bool autoSaveOnExit_ = false;  // Auto-save log when exiting app
 
     // Settings management
     void openSettings();
     void saveSettings();
     void loadSettings();
+    void saveQuickGroupLabels();
+    void loadQuickGroupLabels();
 };

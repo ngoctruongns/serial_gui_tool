@@ -107,7 +107,14 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
 
     // Build UI in separate function to keep constructor short
     setupUi();
-    connect(openAction, &QAction::triggered, this, &MainWindow::openFile);
+
+    // Load quick group labels and update the group boxes
+    loadQuickGroupLabels();
+    if (quickGroup1Box_)
+        quickGroup1Box_->setTitle(quickGroup1Label_);
+    if (quickGroup2Box_)
+        quickGroup2Box_->setTitle(quickGroup2Label_);
+
     connect(saveAction, &QAction::triggered, this, &MainWindow::saveFile);
     connect(clearLogsAction, &QAction::triggered, this, &MainWindow::clearLogs);
     connect(exitAction, &QAction::triggered, this, &MainWindow::exitApp);
@@ -382,6 +389,25 @@ void MainWindow::saveFile()
 
 void MainWindow::exitApp()
 {
+    // Auto-save log if option is enabled and there's content
+    if (autoSaveOnExit_) {
+        QString contents = logView_->toPlainText();
+        if (!contents.isEmpty()) {
+            QDir d(QDir::currentPath());
+            if (!d.exists("log")) {
+                d.mkdir("log");
+            }
+            QString defaultName = QDateTime::currentDateTime().toString("yyMMdd_hhmmss");
+            QString filePath = d.filePath(QString("log/log_%1.txt").arg(defaultName));
+            QFile file(filePath);
+            if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                QTextStream out(&file);
+                out << contents;
+                file.close();
+            }
+        }
+    }
+
     // Close plot window if open, then quit
     if (plotWindow_) {
         plotWindow_->close();
@@ -606,7 +632,7 @@ void MainWindow::clearLogs()
 
     // Check if log directory exists
     if (!logDir.exists()) {
-        showMessageAutoClose("Info", "Log directory does not exist.", 2000);
+        showMessageAutoClose("Info", "Log directory does not exist.", 1500);
         return;
     }
 
@@ -617,7 +643,7 @@ void MainWindow::clearLogs()
     QFileInfoList files = logDir.entryInfoList();
 
     if (files.isEmpty()) {
-        showMessageAutoClose("Info", "No log files to delete.", 2000);
+        showMessageAutoClose("Info", "No log files to delete.", 1500);
         return;
     }
 
@@ -638,7 +664,7 @@ void MainWindow::clearLogs()
         }
     }
 
-    showMessageAutoClose("Info", QString("Deleted %1 log file(s).").arg(deletedCount), 2000);
+    showMessageAutoClose("Info", QString("Deleted %1 log file(s).").arg(deletedCount), 1500);
 }
 
 QString MainWindow::loadCommandsFromFile()
@@ -793,7 +819,7 @@ void MainWindow::openSettings()
 {
     QDialog *dialog = new QDialog(this);
     dialog->setWindowTitle(tr("Settings"));
-    dialog->setGeometry(100, 100, 400, 200);
+    dialog->setGeometry(100, 100, 500, 300);
 
     QVBoxLayout *layout = new QVBoxLayout(dialog);
 
@@ -828,6 +854,33 @@ void MainWindow::openSettings()
     eolLayout->addStretch();
     layout->addLayout(eolLayout);
 
+    // Quick Command Group 1 Label
+    QHBoxLayout *group1Layout = new QHBoxLayout();
+    QLabel *group1Label = new QLabel(tr("Group 1 Label:"));
+    QLineEdit *group1Edit = new QLineEdit();
+    group1Edit->setText(quickGroup1Label_);
+    group1Layout->addWidget(group1Label);
+    group1Layout->addWidget(group1Edit);
+    layout->addLayout(group1Layout);
+
+    // Quick Command Group 2 Label
+    QHBoxLayout *group2Layout = new QHBoxLayout();
+    QLabel *group2Label = new QLabel(tr("Group 2 Label:"));
+    QLineEdit *group2Edit = new QLineEdit();
+    group2Edit->setText(quickGroup2Label_);
+    group2Layout->addWidget(group2Label);
+    group2Layout->addWidget(group2Edit);
+    layout->addLayout(group2Layout);
+
+    // Auto Save on Exit Setting
+    QHBoxLayout *autoSaveLayout = new QHBoxLayout();
+    QCheckBox *autoSaveCheck = new QCheckBox(tr("Auto-save log when exiting"));
+    autoSaveCheck->setChecked(autoSaveOnExit_);
+    autoSaveCheck->setToolTip(tr("If checked, log will be automatically saved to log/ folder when exiting the app"));
+    autoSaveLayout->addWidget(autoSaveCheck);
+    autoSaveLayout->addStretch();
+    layout->addLayout(autoSaveLayout);
+
     layout->addStretch();
 
     // Buttons
@@ -839,14 +892,24 @@ void MainWindow::openSettings()
     buttonLayout->addWidget(cancelBtn);
     layout->addLayout(buttonLayout);
 
-    connect(okBtn, &QPushButton::clicked, dialog, [this, fontCombo, eolCombo, dialog]() {
+    connect(okBtn, &QPushButton::clicked, dialog, [this, fontCombo, eolCombo, group1Edit, group2Edit, autoSaveCheck, dialog]() {
         logFontSize_ = fontCombo->currentData().toInt();
         eolMode_ = eolCombo->currentData().toString();
+        quickGroup1Label_ = group1Edit->text();
+        quickGroup2Label_ = group2Edit->text();
+        autoSaveOnExit_ = autoSaveCheck->isChecked();
 
         // Apply font size to logView_
         logView_->setStyleSheet(QString("font-size: %1px;").arg(logFontSize_));
 
+        // Update group box titles
+        if (quickGroup1Box_)
+            quickGroup1Box_->setTitle(quickGroup1Label_);
+        if (quickGroup2Box_)
+            quickGroup2Box_->setTitle(quickGroup2Label_);
+
         saveSettings();
+        saveQuickGroupLabels();
         dialog->accept();
     });
 
@@ -881,6 +944,7 @@ void MainWindow::saveSettings()
         eolModeStr = "LF";
 
     out << "EOLMode=" << eolModeStr << "\n";
+    out << "AutoSaveOnExit=" << (autoSaveOnExit_ ? "true" : "false") << "\n";
     file.close();
 }
 
@@ -920,6 +984,61 @@ void MainWindow::loadSettings()
                 eolMode_ = "\r\n";
             else
                 eolMode_ = "\n";
+        } else if (key == "AutoSaveOnExit") {
+            autoSaveOnExit_ = (value == "true");
+        }
+    }
+    file.close();
+}
+
+void MainWindow::saveQuickGroupLabels()
+{
+    QDir dir(QDir::currentPath());
+    if (!dir.exists("cmd"))
+        dir.mkdir("cmd");
+
+    QString filePath = dir.filePath("cmd/quick_groups.txt");
+    QFile file(filePath);
+
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        return;
+    }
+
+    QTextStream out(&file);
+    out << "Group1=" << quickGroup1Label_ << "\n";
+    out << "Group2=" << quickGroup2Label_ << "\n";
+    file.close();
+}
+
+void MainWindow::loadQuickGroupLabels()
+{
+    QDir dir(QDir::currentPath());
+    if (!dir.exists("cmd"))
+        return;
+
+    QString filePath = dir.filePath("cmd/quick_groups.txt");
+    QFile file(filePath);
+
+    if (!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return;
+
+    QTextStream in(&file);
+    while (!in.atEnd()) {
+        QString line = in.readLine();
+        if (line.isEmpty() || line.startsWith("#"))
+            continue;
+
+        QStringList parts = line.split("=");
+        if (parts.size() != 2)
+            continue;
+
+        QString key = parts[0].trimmed();
+        QString value = parts[1].trimmed();
+
+        if (key == "Group1") {
+            quickGroup1Label_ = value;
+        } else if (key == "Group2") {
+            quickGroup2Label_ = value;
         }
     }
     file.close();

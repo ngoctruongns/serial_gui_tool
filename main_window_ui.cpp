@@ -58,20 +58,26 @@ void MainWindow::setupUi()
     sendHex_->setToolTip(tr("Send data as hex instead of UTF-8"));
 
     // Quick-send buttons (user-assignable). They will be shown to the
-    // right of the log view in a vertical arrangement.
-    quickBtn1_ = new QPushButton(tr("Q1"), this);
-    quickBtn2_ = new QPushButton(tr("Q2"), this);
-    quickBtn3_ = new QPushButton(tr("Q3"), this);
-    quickBtn4_ = new QPushButton(tr("Q4"), this);
-    quickBtn5_ = new QPushButton(tr("Q5"), this);
+    // right of the log view in two groups (0-4 and 5-9).
+    quickBtn1_ = new QPushButton(tr("CMD0"), this);
+    quickBtn2_ = new QPushButton(tr("CMD1"), this);
+    quickBtn3_ = new QPushButton(tr("CMD2"), this);
+    quickBtn4_ = new QPushButton(tr("CMD3"), this);
+    quickBtn5_ = new QPushButton(tr("CMD4"), this);
+    quickBtn6_ = new QPushButton(tr("CMD5"), this);
+    quickBtn7_ = new QPushButton(tr("CMD6"), this);
+    quickBtn8_ = new QPushButton(tr("CMD7"), this);
+    quickBtn9_ = new QPushButton(tr("CMD8"), this);
+    quickBtn10_ = new QPushButton(tr("CMD9"), this);
     // Default command properties are empty; user can set these in code or
     // (future) via a small settings dialog. We'll use the "command" Qt
     // property to store the command string for each button.
-    quickBtn1_->setProperty("command", QString());
-    quickBtn2_->setProperty("command", QString());
-    quickBtn3_->setProperty("command", QString());
-    quickBtn4_->setProperty("command", QString());
-    quickBtn5_->setProperty("command", QString());
+    for (int i = 1; i <= 10; ++i) {
+        auto btn = (i == 1) ? quickBtn1_ : (i == 2) ? quickBtn2_ : (i == 3) ? quickBtn3_ :
+                   (i == 4) ? quickBtn4_ : (i == 5) ? quickBtn5_ : (i == 6) ? quickBtn6_ :
+                   (i == 7) ? quickBtn7_ : (i == 8) ? quickBtn8_ : (i == 9) ? quickBtn9_ : quickBtn10_;
+        btn->setProperty("command", QString());
+    }
 
     // Load quick commands from cmd/quick_command.txt if present.
     {
@@ -93,7 +99,7 @@ void MainWindow::setupUi()
                 lines.append(t);
             }
             file.close();
-            // Assign loaded lines to quick buttons (up to 5)
+            // Assign loaded lines to quick buttons (up to 10)
             auto assignLine = [&](int idx, QPushButton *btn) {
                 if (idx < lines.size()) {
                     QString s = lines.at(idx).trimmed();
@@ -106,6 +112,11 @@ void MainWindow::setupUi()
             assignLine(2, quickBtn3_);
             assignLine(3, quickBtn4_);
             assignLine(4, quickBtn5_);
+            assignLine(5, quickBtn6_);
+            assignLine(6, quickBtn7_);
+            assignLine(7, quickBtn8_);
+            assignLine(8, quickBtn9_);
+            assignLine(9, quickBtn10_);
         }
     }
 
@@ -186,44 +197,63 @@ void MainWindow::setupUi()
 
     QWidget *quickContainer = new QWidget(this);
     QVBoxLayout *quickLayout = new QVBoxLayout(quickContainer);
-    quickLayout->setContentsMargins(0, 0, 0, 0);
+    quickLayout->setContentsMargins(5, 5, 5, 5);
     quickLayout->setSpacing(6);
-    // Make buttons compact and vertically aligned from top to bottom
-    quickBtn1_->setMaximumWidth(120);
-    quickBtn2_->setMaximumWidth(120);
-    quickBtn3_->setMaximumWidth(120);
-    quickBtn4_->setMaximumWidth(120);
-    quickBtn5_->setMaximumWidth(120);
-    // For each quick button, create a small row containing the big quick
-    // button and a small edit button to configure its command string.
+
+    // Create two groups: Group 1 (buttons 0-4) and Group 2 (buttons 5-9)
+    // Helper to create a group with border and label - buttons arranged vertically
+    auto createQuickGroup = [this](const QString &title, QPushButton **btns, QPushButton **editBtns, int count) -> QGroupBox* {
+        QGroupBox *groupBox = new QGroupBox(title, this);
+        QVBoxLayout *groupLayout = new QVBoxLayout(groupBox);
+        groupLayout->setContentsMargins(8, 8, 8, 8);
+        groupLayout->setSpacing(4);
+
+        for (int i = 0; i < count; ++i) {
+            btns[i]->setMaximumWidth(80);
+            btns[i]->setMinimumWidth(70);
+            editBtns[i]->setMaximumWidth(32);
+            editBtns[i]->setMinimumWidth(32);
+
+            // Arrange button and edit button horizontally
+            QWidget *row = new QWidget(this);
+            QHBoxLayout *rowLayout = new QHBoxLayout(row);
+            rowLayout->setContentsMargins(0, 0, 0, 0);
+            rowLayout->setSpacing(2);
+            rowLayout->addWidget(btns[i], 1);  // button gets more space
+            rowLayout->addWidget(editBtns[i], 0);
+
+            groupLayout->addWidget(row);
+        }
+        groupLayout->addStretch();
+        return groupBox;
+    };
+
+    // Setup edit buttons
     quickEditBtn1_ = new QPushButton(tr("..."), this);
     quickEditBtn2_ = new QPushButton(tr("..."), this);
     quickEditBtn3_ = new QPushButton(tr("..."), this);
     quickEditBtn4_ = new QPushButton(tr("..."), this);
     quickEditBtn5_ = new QPushButton(tr("..."), this);
-    quickEditBtn1_->setMaximumWidth(36);
-    quickEditBtn2_->setMaximumWidth(36);
-    quickEditBtn3_->setMaximumWidth(36);
-    quickEditBtn4_->setMaximumWidth(36);
-    quickEditBtn5_->setMaximumWidth(36);
+    quickEditBtn6_ = new QPushButton(tr("..."), this);
+    quickEditBtn7_ = new QPushButton(tr("..."), this);
+    quickEditBtn8_ = new QPushButton(tr("..."), this);
+    quickEditBtn9_ = new QPushButton(tr("..."), this);
+    quickEditBtn10_ = new QPushButton(tr("..."), this);
 
-    auto addQuickRow = [&](QPushButton *quick, QPushButton *edit) {
-        QWidget *row = new QWidget(this);
-        QHBoxLayout *rl = new QHBoxLayout(row);
-        rl->setContentsMargins(0, 0, 0, 0);
-        rl->setSpacing(4);
-        // Make quick button expand horizontally while edit stays compact
-        rl->addWidget(quick);
-        rl->addWidget(edit, /*stretch=*/0);
-        quickLayout->addWidget(row);
-    };
+    // Create group 1 (buttons 0-4)
+    QPushButton *group1Btns[] = {quickBtn1_, quickBtn2_, quickBtn3_, quickBtn4_, quickBtn5_};
+    QPushButton *group1Edits[] = {quickEditBtn1_, quickEditBtn2_, quickEditBtn3_, quickEditBtn4_, quickEditBtn5_};
+    quickGroup1Label_ = "Group 1";
+    quickGroup1Box_ = createQuickGroup(quickGroup1Label_, group1Btns, group1Edits, 5);
 
-    addQuickRow(quickBtn1_, quickEditBtn1_);
-    addQuickRow(quickBtn2_, quickEditBtn2_);
-    addQuickRow(quickBtn3_, quickEditBtn3_);
-    addQuickRow(quickBtn4_, quickEditBtn4_);
-    addQuickRow(quickBtn5_, quickEditBtn5_);
-    // Add a spacer to push buttons to the top
+    // Create group 2 (buttons 5-9)
+    QPushButton *group2Btns[] = {quickBtn6_, quickBtn7_, quickBtn8_, quickBtn9_, quickBtn10_};
+    QPushButton *group2Edits[] = {quickEditBtn6_, quickEditBtn7_, quickEditBtn8_, quickEditBtn9_, quickEditBtn10_};
+    quickGroup2Label_ = "Group 2";
+    quickGroup2Box_ = createQuickGroup(quickGroup2Label_, group2Btns, group2Edits, 5);
+
+    quickLayout->addWidget(quickGroup1Box_);
+    quickLayout->addWidget(quickGroup2Box_);
     quickLayout->addStretch(1);
     mainArea->addWidget(quickContainer, /*stretch=*/0);
 
@@ -271,6 +301,26 @@ void MainWindow::setupUi()
         QString cmd = quickBtn5_->property("command").toString();
         if (!cmd.isEmpty()) { commandLine_->setText(cmd); sendCommand(); }
     });
+    connect(quickBtn6_, &QPushButton::clicked, this, [this]() {
+        QString cmd = quickBtn6_->property("command").toString();
+        if (!cmd.isEmpty()) { commandLine_->setText(cmd); sendCommand(); }
+    });
+    connect(quickBtn7_, &QPushButton::clicked, this, [this]() {
+        QString cmd = quickBtn7_->property("command").toString();
+        if (!cmd.isEmpty()) { commandLine_->setText(cmd); sendCommand(); }
+    });
+    connect(quickBtn8_, &QPushButton::clicked, this, [this]() {
+        QString cmd = quickBtn8_->property("command").toString();
+        if (!cmd.isEmpty()) { commandLine_->setText(cmd); sendCommand(); }
+    });
+    connect(quickBtn9_, &QPushButton::clicked, this, [this]() {
+        QString cmd = quickBtn9_->property("command").toString();
+        if (!cmd.isEmpty()) { commandLine_->setText(cmd); sendCommand(); }
+    });
+    connect(quickBtn10_, &QPushButton::clicked, this, [this]() {
+        QString cmd = quickBtn10_->property("command").toString();
+        if (!cmd.isEmpty()) { commandLine_->setText(cmd); sendCommand(); }
+    });
 
     // Edit-button handlers: open an input dialog, store the string in the
     // quick button's "command" property and update its tooltip for visibility.
@@ -292,6 +342,11 @@ void MainWindow::setupUi()
         lines << quickBtn3_->property("command").toString();
         lines << quickBtn4_->property("command").toString();
         lines << quickBtn5_->property("command").toString();
+        lines << quickBtn6_->property("command").toString();
+        lines << quickBtn7_->property("command").toString();
+        lines << quickBtn8_->property("command").toString();
+        lines << quickBtn9_->property("command").toString();
+        lines << quickBtn10_->property("command").toString();
         out << lines.join('\n');
         file.close();
     };
@@ -314,11 +369,16 @@ void MainWindow::setupUi()
         });
     };
 
-    makeEditHandler(quickBtn1_, quickEditBtn1_, tr("Q1"));
-    makeEditHandler(quickBtn2_, quickEditBtn2_, tr("Q2"));
-    makeEditHandler(quickBtn3_, quickEditBtn3_, tr("Q3"));
-    makeEditHandler(quickBtn4_, quickEditBtn4_, tr("Q4"));
-    makeEditHandler(quickBtn5_, quickEditBtn5_, tr("Q5"));
+    makeEditHandler(quickBtn1_, quickEditBtn1_, tr("CMD0"));
+    makeEditHandler(quickBtn2_, quickEditBtn2_, tr("CMD1"));
+    makeEditHandler(quickBtn3_, quickEditBtn3_, tr("CMD2"));
+    makeEditHandler(quickBtn4_, quickEditBtn4_, tr("CMD3"));
+    makeEditHandler(quickBtn5_, quickEditBtn5_, tr("CMD4"));
+    makeEditHandler(quickBtn6_, quickEditBtn6_, tr("CMD5"));
+    makeEditHandler(quickBtn7_, quickEditBtn7_, tr("CMD6"));
+    makeEditHandler(quickBtn8_, quickEditBtn8_, tr("CMD7"));
+    makeEditHandler(quickBtn9_, quickEditBtn9_, tr("CMD8"));
+    makeEditHandler(quickBtn10_, quickEditBtn10_, tr("CMD9"));
 
     // Keyboard shortcuts for search navigation: F3 = next, Shift+F3 = previous
     QShortcut *next = new QShortcut(QKeySequence("F3"), this);

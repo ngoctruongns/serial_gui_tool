@@ -43,9 +43,12 @@ void MainWindow::setupUi()
     clearBtn_ = new QPushButton(tr("Clear All"));
     commandLine_ = new QLineEdit(this);
     searchLine_ = new QLineEdit(this);
+    searchCountLabel_ = new QLabel(this);
+    searchCountLabel_->setText("");
+    searchCountLabel_->setMaximumWidth(60);
     logView_ = new QPlainTextEdit(this);
     logView_->setReadOnly(false);
-    logView_->setStyleSheet("font-size: 22px;");
+    logView_->setStyleSheet(QString("font-size: %1px;").arg(logFontSize_));
     // logView_->setStyleSheet("background-color: black; color: white;");
     // QFont font = logView_->font();
     // font.setPointSize(13);
@@ -158,15 +161,17 @@ void MainWindow::setupUi()
     cmdLayout->addWidget(sendBtn_);
     g->addWidget(cmdContainer, 0, 2);
 
-    g->addWidget(searchLine_, 1, 0);
-    // Put the two small search navigation buttons into a compact container
-    QWidget *searchNavContainer = new QWidget(this);
-    QHBoxLayout *snLayout = new QHBoxLayout(searchNavContainer);
-    snLayout->setContentsMargins(0, 0, 0, 0);
-    snLayout->setSpacing(2);
-    snLayout->addWidget(searchUpBtn_);
-    snLayout->addWidget(searchDownBtn_);
-    g->addWidget(searchNavContainer, 1, 1);
+    // Put search controls into a compact layout: searchLine + Up/Down buttons + count label
+    QWidget *searchContainer = new QWidget(this);
+    QHBoxLayout *searchLayout = new QHBoxLayout(searchContainer);
+    searchLayout->setContentsMargins(0, 0, 0, 0);
+    searchLayout->setSpacing(2);
+    searchLayout->addWidget(searchLine_, /*stretch=*/1);  // Let searchLine_ expand
+    searchLayout->addWidget(searchUpBtn_, /*stretch=*/0);
+    searchLayout->addWidget(searchDownBtn_, /*stretch=*/0);
+    searchLayout->addWidget(searchCountLabel_, /*stretch=*/0);
+
+    g->addWidget(searchContainer, 1, 0, 1, 2);  // Span across column 0 and 1
     g->addWidget(clearBtn_, 1, 2);
 
     vbox->addLayout(h1);
@@ -238,6 +243,7 @@ void MainWindow::setupUi()
     connect(searchDownBtn_, &QPushButton::clicked, this, &MainWindow::searchDown);
     connect(commandLine_, &QLineEdit::returnPressed, this, &MainWindow::sendCommand);
     connect(searchLine_, &QLineEdit::textChanged, this, &MainWindow::updateCompleter);
+    connect(searchLine_, &QLineEdit::textChanged, this, &MainWindow::updateSearchMatches);
     // When user presses Enter in the search box: first Enter jumps to first match,
     // later Enters act like "search down" (next match)
     connect(searchLine_, &QLineEdit::returnPressed, this, &MainWindow::onSearchReturnPressed);

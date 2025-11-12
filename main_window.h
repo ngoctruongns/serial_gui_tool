@@ -49,6 +49,8 @@ private slots:
     void clearLog();
     void updateCompleter();
     void highlightSearchResults(const QString &term);
+    void updateSearchMatches(const QString &term);
+    void updateSearchCountLabel();
     void timerHandler();
     void showMessageAutoClose(const QString &title, const QString &msg, int timeoutMs = 2000);
     void setupUi();
@@ -60,6 +62,8 @@ private slots:
     // Track search state for Enter behavior in searchLine_
     QString lastSearchTerm_;
     bool searchReturnActive_ = false;
+    int currentSearchIndex_ = -1;  // Current match index (0-based)
+    QVector<int> searchMatches_;   // Positions of all matches
 
     bool initFlag_;
     SerialWorker *worker_;
@@ -68,6 +72,7 @@ private slots:
     QComboBox *baudCombo_;
     QLineEdit *commandLine_;
     QLineEdit *searchLine_;
+    QLabel *searchCountLabel_;     // Label to show "x/y" search count
     QPushButton *loadBtn_;
     QPushButton *openBtn_;
     QPushButton *closeBtn_;
@@ -97,4 +102,13 @@ private slots:
     QTimer *timer_;
 
     PlotWindow* plotWindow_ = nullptr;
+
+    // Settings
+    int logFontSize_ = 22;
+    QString eolMode_ = "\n";  // "\n" for LF, "\r\n" for CR+LF
+
+    // Settings management
+    void openSettings();
+    void saveSettings();
+    void loadSettings();
 };

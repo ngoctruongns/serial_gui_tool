@@ -47,12 +47,23 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     viewMenu->addAction(showPlotAction);
     viewMenu->addAction(closePlotAction);
 
+    // Settings menu
+    QMenu *settingsMenu = menuBar()->addMenu(tr("&Settings"));
+    QAction *settingsAction = new QAction(tr("Preferences"), this);
+    settingsAction->setShortcut(QKeySequence("Ctrl+,"));
+    settingsMenu->addAction(settingsAction);
+    connect(settingsAction, &QAction::triggered, this, &MainWindow::openSettings);
+
     // Build UI in separate function to keep constructor short
     setupUi();
     connect(openAction, &QAction::triggered, this, &MainWindow::openFile);
     connect(saveAction, &QAction::triggered, this, &MainWindow::saveFile);
     connect(clearLogsAction, &QAction::triggered, this, &MainWindow::clearLogs);
     connect(exitAction, &QAction::triggered, this, &MainWindow::exitApp);
+
+    // Load settings
+    loadSettings();
+
     // Create worker AFTER UI is setup
     worker_ = new SerialWorker(this); // parent = this, no manual delete needed
 
@@ -133,7 +144,7 @@ void MainWindow::sendCommand()
 
     // Add command to history if it's not empty
     addCommandToHistory(cmd);
-    cmd.append('\n');
+    cmd.append(eolMode_);
 
     if (sendHex_->isChecked()) {
         // parse input string as hex
@@ -164,7 +175,7 @@ void MainWindow::onDataReceived(const QByteArray &data)
         log(strLine);
     }
 
-    // Handle data string for 
+    // Handle data string for
     buffer_.append(data);
 
     QByteArray line;
@@ -233,6 +244,13 @@ void MainWindow::log(const QString &msg)
     cursor.movePosition(QTextCursor::End);
     logView_->setTextCursor(cursor);
     logView_->ensureCursorVisible();
+
+    // Update search highlights if search term is not empty
+    if (!searchLine_->text().isEmpty()) {
+        highlightSearchResults(searchLine_->text());
+        updateSearchMatches(searchLine_->text());
+        updateSearchCountLabel();
+    }
 }
 
 void MainWindow::clearLog()
@@ -258,6 +276,12 @@ void MainWindow::clearLog()
     buffer_.clear();
     emit clearData();
     initFlag_ = true;
+
+    // Reset search state
+    searchMatches_.clear();
+    currentSearchIndex_ = -1;
+    lastSearchTerm_.clear();
+    updateSearchCountLabel();
 }
 
 void MainWindow::openFile()
@@ -280,6 +304,9 @@ void MainWindow::openFile()
     // refresh completer and highlights
     updateCompleter();
     highlightSearchResults(searchLine_->text());
+    updateSearchMatches(searchLine_->text());
+    currentSearchIndex_ = -1;
+    updateSearchCountLabel();
 }
 
 void MainWindow::saveFile()
@@ -372,6 +399,41 @@ void MainWindow::highlightSearchResults(const QString &term)
     logView_->setExtraSelections(extras);
 }
 
+void MainWindow::updateSearchMatches(const QString &term)
+{
+    // Find all matches and update the list
+    searchMatches_.clear();
+    currentSearchIndex_ = -1;
+
+    if (term.isEmpty()) {
+        updateSearchCountLabel();
+        return;
+    }
+
+    QString allText = logView_->toPlainText();
+    int pos = 0;
+    while (true) {
+        int idx = allText.indexOf(term, pos, Qt::CaseSensitive);
+        if (idx == -1) break;
+        searchMatches_.append(idx);
+        pos = idx + term.length();
+    }
+
+    updateSearchCountLabel();
+}
+
+void MainWindow::updateSearchCountLabel()
+{
+    if (searchMatches_.isEmpty() || lastSearchTerm_.isEmpty()) {
+        searchCountLabel_->setText("");
+        return;
+    }
+
+    int total = searchMatches_.size();
+    int current = (currentSearchIndex_ >= 0) ? (currentSearchIndex_ + 1) : 0;
+    searchCountLabel_->setText(QString("%1/%2").arg(current).arg(total));
+}
+
 void MainWindow::searchDown()
 {
     QString term = searchLine_->text();
@@ -382,6 +444,7 @@ void MainWindow::searchDown()
     if (term != lastSearchTerm_) {
         lastSearchTerm_ = term;
         logView_->moveCursor(QTextCursor::Start);
+        currentSearchIndex_ = -1;
     }
 
     // Try to find next from current cursor; if not, wrap to start once
@@ -389,9 +452,25 @@ void MainWindow::searchDown()
         logView_->moveCursor(QTextCursor::Start);
         if (!logView_->find(term, QTextDocument::FindCaseSensitively)) {
             showMessageAutoClose("Search", "Text not found!", 1500);
+            currentSearchIndex_ = -1;
+            updateSearchCountLabel();
             return;
         }
     }
+
+    // Update current index based on cursor position
+    if (!searchMatches_.isEmpty()) {
+        QTextCursor cursor = logView_->textCursor();
+        int cursorPos = cursor.selectionStart();
+        for (int i = 0; i < searchMatches_.size(); ++i) {
+            if (searchMatches_[i] == cursorPos) {
+                currentSearchIndex_ = i;
+                break;
+            }
+        }
+    }
+
+    updateSearchCountLabel();
     logView_->setFocus();
 }
 
@@ -411,8 +490,12 @@ void MainWindow::onSearchReturnPressed()
     if (!doc->find(term, cursor).isNull()) {
         // Found at least one match - ready for Up/Down navigation
         lastSearchTerm_ = term;
+        currentSearchIndex_ = 0;
+        updateSearchCountLabel();
     } else {
         showMessageAutoClose("Search", "Text not found!", 1500);
+        currentSearchIndex_ = -1;
+        updateSearchCountLabel();
     }
 }
 
@@ -428,9 +511,25 @@ void MainWindow::searchUp()
         if (!logView_->find(term,
                             QTextDocument::FindBackward | QTextDocument::FindCaseSensitively)) {
             showMessageAutoClose("Search", "Text not found!", 1500);
+            currentSearchIndex_ = -1;
+            updateSearchCountLabel();
             return;
         }
     }
+
+    // Update current index based on cursor position
+    if (!searchMatches_.isEmpty()) {
+        QTextCursor cursor = logView_->textCursor();
+        int cursorPos = cursor.selectionStart();
+        for (int i = 0; i < searchMatches_.size(); ++i) {
+            if (searchMatches_[i] == cursorPos) {
+                currentSearchIndex_ = i;
+                break;
+            }
+        }
+    }
+
+    updateSearchCountLabel();
     logView_->setFocus();
 }
 
@@ -628,4 +727,140 @@ void MainWindow::onShowPlotTriggered()
     plotWindow_->show();
     plotWindow_->raise();
     plotWindow_->activateWindow();
+}
+
+void MainWindow::openSettings()
+{
+    QDialog *dialog = new QDialog(this);
+    dialog->setWindowTitle(tr("Settings"));
+    dialog->setGeometry(100, 100, 400, 200);
+
+    QVBoxLayout *layout = new QVBoxLayout(dialog);
+
+    // Font Size Setting
+    QHBoxLayout *fontLayout = new QHBoxLayout();
+    QLabel *fontLabel = new QLabel(tr("Log View Font Size:"));
+    QComboBox *fontCombo = new QComboBox();
+    for (int size = 8; size <= 32; size += 2)
+        fontCombo->addItem(QString::number(size), size);
+    fontCombo->setCurrentText(QString::number(logFontSize_));
+    fontLayout->addWidget(fontLabel);
+    fontLayout->addWidget(fontCombo);
+    fontLayout->addStretch();
+    layout->addLayout(fontLayout);
+
+    // EOL Mode Setting
+    QHBoxLayout *eolLayout = new QHBoxLayout();
+    QLabel *eolLabel = new QLabel(tr("End of Line (EOL):"));
+    QComboBox *eolCombo = new QComboBox();
+    eolCombo->addItem(tr("None"), "");
+    eolCombo->addItem(tr("LF (\\n)"), "\n");
+    eolCombo->addItem(tr("CR+LF (\\r\\n)"), "\r\n");
+    // Set current selection
+    int currentIndex = 1;  // Default to LF
+    if (eolMode_ == "")
+        currentIndex = 0;  // None
+    else if (eolMode_ == "\r\n")
+        currentIndex = 2;  // CR+LF
+    eolCombo->setCurrentIndex(currentIndex);
+    eolLayout->addWidget(eolLabel);
+    eolLayout->addWidget(eolCombo);
+    eolLayout->addStretch();
+    layout->addLayout(eolLayout);
+
+    layout->addStretch();
+
+    // Buttons
+    QHBoxLayout *buttonLayout = new QHBoxLayout();
+    QPushButton *okBtn = new QPushButton(tr("OK"));
+    QPushButton *cancelBtn = new QPushButton(tr("Cancel"));
+    buttonLayout->addStretch();
+    buttonLayout->addWidget(okBtn);
+    buttonLayout->addWidget(cancelBtn);
+    layout->addLayout(buttonLayout);
+
+    connect(okBtn, &QPushButton::clicked, dialog, [this, fontCombo, eolCombo, dialog]() {
+        logFontSize_ = fontCombo->currentData().toInt();
+        eolMode_ = eolCombo->currentData().toString();
+
+        // Apply font size to logView_
+        logView_->setStyleSheet(QString("font-size: %1px;").arg(logFontSize_));
+
+        saveSettings();
+        dialog->accept();
+    });
+
+    connect(cancelBtn, &QPushButton::clicked, dialog, &QDialog::reject);
+
+    dialog->exec();
+}
+
+void MainWindow::saveSettings()
+{
+    QDir dir(QDir::currentPath());
+    if (!dir.exists("cmd"))
+        dir.mkdir("cmd");
+
+    QString filePath = dir.filePath("cmd/settings.txt");
+    QFile file(filePath);
+
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QMessageBox::warning(this, "Error", "Unable to write to settings file: " + filePath);
+        return;
+    }
+
+    QTextStream out(&file);
+    out << "FontSize=" << logFontSize_ << "\n";
+
+    QString eolModeStr;
+    if (eolMode_ == "")
+        eolModeStr = "NONE";
+    else if (eolMode_ == "\r\n")
+        eolModeStr = "CRLF";
+    else
+        eolModeStr = "LF";
+
+    out << "EOLMode=" << eolModeStr << "\n";
+    file.close();
+}
+
+void MainWindow::loadSettings()
+{
+    QDir dir(QDir::currentPath());
+    if (!dir.exists("cmd"))
+        return;
+
+    QString filePath = dir.filePath("cmd/settings.txt");
+    QFile file(filePath);
+
+    if (!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return;
+
+    QTextStream in(&file);
+    while (!in.atEnd()) {
+        QString line = in.readLine();
+        if (line.isEmpty() || line.startsWith("#"))
+            continue;
+
+        QStringList parts = line.split("=");
+        if (parts.size() != 2)
+            continue;
+
+        QString key = parts[0].trimmed();
+        QString value = parts[1].trimmed();
+
+        if (key == "FontSize") {
+            logFontSize_ = value.toInt();
+            if (logFontSize_ < 8)
+                logFontSize_ = 22;
+        } else if (key == "EOLMode") {
+            if (value == "NONE")
+                eolMode_ = "";
+            else if (value == "CRLF")
+                eolMode_ = "\r\n";
+            else
+                eolMode_ = "\n";
+        }
+    }
+    file.close();
 }

@@ -30,7 +30,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     openAction->setShortcut(QKeySequence::Open);
     saveAction->setShortcut(QKeySequence::Save);
     clearLogsAction->setShortcut(QKeySequence("Ctrl+Shift+D"));
-    exitAction->setShortcut(QKeySequence::Quit);
+    exitAction->setShortcut(QKeySequence("Ctrl+Q"));
     fileMenu->addAction(openAction);
     fileMenu->addAction(saveAction);
     fileMenu->addAction(clearLogsAction);
@@ -133,6 +133,7 @@ void MainWindow::sendCommand()
 
     // Add command to history if it's not empty
     addCommandToHistory(cmd);
+    cmd.append('\n');
 
     if (sendHex_->isChecked()) {
         // parse input string as hex
@@ -155,6 +156,15 @@ void MainWindow::onDataReceived(const QByteArray &data)
         return;
     }
 
+    if (hexCheck_->isChecked()) {
+        QString hex = data.toHex(' ').toUpper();
+        log(hex);
+    } else {
+        QString strLine = QString::fromUtf8(data);
+        log(strLine);
+    }
+
+    // Handle data string for 
     buffer_.append(data);
 
     QByteArray line;
@@ -178,11 +188,10 @@ void MainWindow::onDataReceived(const QByteArray &data)
         buffer_.remove(0, splitIndex + 1);
 
         if (hexCheck_->isChecked()) {
-            QString hex = line.toHex(' ').toUpper();
-            log("RX: " + hex);
+            // QString hex = line.toHex(' ').toUpper();
+            // log("RX: " + hex);
         } else {
-            QString strLine = QString::fromUtf8(line).trimmed();
-            log("RX: " + strLine);
+            QString strLine = QString::fromUtf8(line);
             if (line.endsWith('\n')) {
                 onDataPlotter(strLine);
             }
@@ -219,7 +228,7 @@ void MainWindow::onError(const QString &msg)
 
 void MainWindow::log(const QString &msg)
 {
-    logView_->appendPlainText(msg);
+    logView_->insertPlainText(msg);
 }
 
 void MainWindow::clearLog()

@@ -41,7 +41,7 @@ void MainWindow::setupUi()
     searchDownBtn_ = new QPushButton(tr("Dn"));
     searchDownBtn_->setMaximumWidth(40);
     clearBtn_ = new QPushButton(tr("Clear All"));
-    commandLine_ = new QLineEdit(this);
+    commandLine_ = new CommandLineEdit(this);
     searchLine_ = new QLineEdit(this);
     searchCountLabel_ = new QLabel(this);
     searchCountLabel_->setText("");

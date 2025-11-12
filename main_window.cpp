@@ -17,6 +17,57 @@
 #include <QVBoxLayout>
 #include <QDialog>
 #include <QPlainTextEdit>
+#include <QKeyEvent>
+
+// Implementation of CommandLineEdit with arrow key support
+CommandLineEdit::CommandLineEdit(QWidget *parent)
+    : QLineEdit(parent), historyIndex_(-1)
+{
+}
+
+void CommandLineEdit::setCommandHistory(const QStringList &history)
+{
+    commandHistory_ = history;
+    historyIndex_ = -1;  // Reset to no selection
+}
+
+void CommandLineEdit::keyPressEvent(QKeyEvent *event)
+{
+    if (event->key() == Qt::Key_Up) {
+        event->accept();
+        if (commandHistory_.isEmpty())
+            return;
+
+        // Move to previous command
+        if (historyIndex_ < commandHistory_.size() - 1) {
+            historyIndex_++;
+            setText(commandHistory_.at(commandHistory_.size() - 1 - historyIndex_));
+        }
+        return;
+    }
+    else if (event->key() == Qt::Key_Down) {
+        event->accept();
+        if (commandHistory_.isEmpty())
+            return;
+
+        // Move to next command (more recent)
+        if (historyIndex_ > 0) {
+            historyIndex_--;
+            setText(commandHistory_.at(commandHistory_.size() - 1 - historyIndex_));
+        } else if (historyIndex_ == 0) {
+            historyIndex_ = -1;
+            clear();
+        }
+        return;
+    }
+
+    // For any other key, reset history index when user types
+    if (event->text().length() > 0 && !event->text()[0].isNull()) {
+        historyIndex_ = -1;
+    }
+
+    QLineEdit::keyPressEvent(event);
+}
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
 {
@@ -687,6 +738,9 @@ void MainWindow::updateCommandCompleter()
     commandCompleter_->setCaseSensitivity(Qt::CaseInsensitive);
     commandCompleter_->setCompletionMode(QCompleter::PopupCompletion);
     commandLine_->setCompleter(commandCompleter_);
+
+    // Also set history for arrow key navigation
+    commandLine_->setCommandHistory(commands);
 }
 
 void MainWindow::addCommandToHistory(const QString &command)
@@ -712,6 +766,12 @@ void MainWindow::addCommandToHistory(const QString &command)
         // Update completer with new command
         updateCommandCompleter();
     }
+
+    // Update history in commandLine_ (keep all commands including duplicates for browsing)
+    // Reload commands for history browsing
+    content = loadCommandsFromFile();
+    QStringList historyList = content.split('\n', Qt::SkipEmptyParts);
+    commandLine_->setCommandHistory(historyList);
 }
 
 void MainWindow::onShowPlotTriggered()

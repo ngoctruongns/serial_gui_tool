@@ -2,6 +2,8 @@
 
 #include <QMainWindow>
 #include <QCheckBox>
+#include <QLineEdit>
+#include <QStringList>
 #include "serial_worker.h"
 #include "plot_widget.h"
 
@@ -11,8 +13,23 @@ class QCompleter;
 class QTimer;
 class QPushButton;
 class QComboBox;
-class QLineEdit;
 class QDialog;
+
+// Custom QLineEdit with arrow key support for command history
+class CommandLineEdit : public QLineEdit
+{
+    Q_OBJECT
+public:
+    CommandLineEdit(QWidget *parent = nullptr);
+    void setCommandHistory(const QStringList &history);
+
+protected:
+    void keyPressEvent(QKeyEvent *event) override;
+
+private:
+    QStringList commandHistory_;
+    int historyIndex_;
+};
 
 class MainWindow : public QMainWindow
 {
@@ -70,7 +87,7 @@ private slots:
     QPlainTextEdit *logView_;
     QComboBox *portCombo_;
     QComboBox *baudCombo_;
-    QLineEdit *commandLine_;
+    CommandLineEdit *commandLine_;
     QLineEdit *searchLine_;
     QLabel *searchCountLabel_;     // Label to show "x/y" search count
     QPushButton *loadBtn_;

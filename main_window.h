@@ -128,6 +128,7 @@ private slots:
     QPushButton *clearBtn_;
     QCheckBox *hexCheck_;
     QCheckBox *sendHex_;
+    QCheckBox *autoScrollCheck_;
     QByteArray buffer_;
     QCompleter *completer_;
     QCompleter *commandCompleter_;
@@ -139,6 +140,7 @@ private slots:
     int logFontSize_ = 22;
     QString eolMode_ = "\n";  // "\n" for LF, "\r\n" for CR+LF
     bool autoSaveOnExit_ = false;  // Auto-save log when exiting app
+    bool autoScrollEnabled_ = true;  // Auto-scroll to end of log
 
     // Settings management
     void openSettings();

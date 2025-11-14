@@ -122,6 +122,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     // Load settings
     loadSettings();
 
+    // Update auto-scroll checkbox based on loaded settings
+    if (autoScrollCheck_) {
+        autoScrollCheck_->setChecked(autoScrollEnabled_);
+    }
+
     // Create worker AFTER UI is setup
     worker_ = new SerialWorker(this); // parent = this, no manual delete needed
 
@@ -298,10 +303,14 @@ void MainWindow::onError(const QString &msg)
 void MainWindow::log(const QString &msg)
 {
     logView_->insertPlainText(msg);
-    QTextCursor cursor = logView_->textCursor();
-    cursor.movePosition(QTextCursor::End);
-    logView_->setTextCursor(cursor);
-    logView_->ensureCursorVisible();
+
+    // Auto scroll to end only if auto-scroll is enabled
+    if (autoScrollEnabled_) {
+        QTextCursor cursor = logView_->textCursor();
+        cursor.movePosition(QTextCursor::End);
+        logView_->setTextCursor(cursor);
+        logView_->ensureCursorVisible();
+    }
 
     // Update search highlights if search term is not empty
     if (!searchLine_->text().isEmpty()) {
@@ -945,6 +954,7 @@ void MainWindow::saveSettings()
 
     out << "EOLMode=" << eolModeStr << "\n";
     out << "AutoSaveOnExit=" << (autoSaveOnExit_ ? "true" : "false") << "\n";
+    out << "AutoScroll=" << (autoScrollEnabled_ ? "true" : "false") << "\n";
     file.close();
 }
 
@@ -986,6 +996,8 @@ void MainWindow::loadSettings()
                 eolMode_ = "\n";
         } else if (key == "AutoSaveOnExit") {
             autoSaveOnExit_ = (value == "true");
+        } else if (key == "AutoScroll") {
+            autoScrollEnabled_ = (value == "true");
         }
     }
     file.close();

@@ -56,6 +56,9 @@ void MainWindow::setupUi()
     hexCheck_ = new QCheckBox(tr("HEX"));
     sendHex_ = new QCheckBox(tr("HEX"), this);
     sendHex_->setToolTip(tr("Send data as hex instead of UTF-8"));
+    autoScrollCheck_ = new QCheckBox(tr("Auto Scroll"), this);
+    autoScrollCheck_->setChecked(true);
+    autoScrollCheck_->setToolTip(tr("Automatically scroll to the end when new data arrives"));
 
     // Quick-send buttons (user-assignable). They will be shown to the
     // right of the log view in two groups (0-4 and 5-9).
@@ -156,6 +159,7 @@ void MainWindow::setupUi()
     h1->addWidget(baudCombo_);
     h1->addSpacing(10);
     h1->addWidget(hexCheck_);
+    h1->addWidget(autoScrollCheck_);
     h1->addWidget(openBtn_);
     h1->addWidget(closeBtn_);
 
@@ -271,6 +275,9 @@ void MainWindow::setupUi()
     connect(clearBtn_, &QPushButton::clicked, this, &MainWindow::clearLog);
     connect(searchUpBtn_, &QPushButton::clicked, this, &MainWindow::searchUp);
     connect(searchDownBtn_, &QPushButton::clicked, this, &MainWindow::searchDown);
+    connect(autoScrollCheck_, &QCheckBox::stateChanged, this, [this](int state) {
+        autoScrollEnabled_ = (state == Qt::Checked);
+    });
     connect(commandLine_, &QLineEdit::returnPressed, this, &MainWindow::sendCommand);
     connect(searchLine_, &QLineEdit::textChanged, this, &MainWindow::updateCompleter);
     connect(searchLine_, &QLineEdit::textChanged, this, &MainWindow::updateSearchMatches);

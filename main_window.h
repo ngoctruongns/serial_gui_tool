@@ -129,6 +129,7 @@ private slots:
     QCheckBox *hexCheck_;
     QCheckBox *sendHex_;
     QCheckBox *autoScrollCheck_;
+    QCheckBox *logReadOnlyCheck_;
     QByteArray buffer_;
     QCompleter *completer_;
     QCompleter *commandCompleter_;

@@ -47,7 +47,7 @@ void MainWindow::setupUi()
     searchCountLabel_->setText("");
     searchCountLabel_->setMaximumWidth(60);
     logView_ = new QPlainTextEdit(this);
-    logView_->setReadOnly(false);
+    logView_->setReadOnly(true);
     logView_->setStyleSheet(QString("font-size: %1px;").arg(logFontSize_));
     // logView_->setStyleSheet("background-color: black; color: white;");
     // QFont font = logView_->font();
@@ -59,6 +59,10 @@ void MainWindow::setupUi()
     autoScrollCheck_ = new QCheckBox(tr("Auto Scroll"), this);
     autoScrollCheck_->setChecked(true);
     autoScrollCheck_->setToolTip(tr("Automatically scroll to the end when new data arrives"));
+
+    logReadOnlyCheck_ = new QCheckBox(tr("Read Only"), this);
+    logReadOnlyCheck_->setChecked(true);
+    logReadOnlyCheck_->setToolTip(tr("Set read only mode for log view"));
 
     // Quick-send buttons (user-assignable). They will be shown to the
     // right of the log view in two groups (0-4 and 5-9).
@@ -81,6 +85,9 @@ void MainWindow::setupUi()
                    (i == 7) ? quickBtn7_ : (i == 8) ? quickBtn8_ : (i == 9) ? quickBtn9_ : quickBtn10_;
         btn->setProperty("command", QString());
     }
+
+    commandLine_->setPlaceholderText("Command input here...");
+    searchLine_->setPlaceholderText("Search string input here...");
 
     // Load quick commands from cmd/quick_command.txt if present.
     {
@@ -160,6 +167,7 @@ void MainWindow::setupUi()
     h1->addSpacing(10);
     h1->addWidget(hexCheck_);
     h1->addWidget(autoScrollCheck_);
+    h1->addWidget(logReadOnlyCheck_);
     h1->addWidget(openBtn_);
     h1->addWidget(closeBtn_);
 
@@ -277,6 +285,9 @@ void MainWindow::setupUi()
     connect(searchDownBtn_, &QPushButton::clicked, this, &MainWindow::searchDown);
     connect(autoScrollCheck_, &QCheckBox::stateChanged, this, [this](int state) {
         autoScrollEnabled_ = (state == Qt::Checked);
+    });
+    connect(logReadOnlyCheck_, &QCheckBox::stateChanged, this, [this](int state) {
+        logView_->setReadOnly(state == Qt::Checked);
     });
     connect(commandLine_, &QLineEdit::returnPressed, this, &MainWindow::sendCommand);
     connect(searchLine_, &QLineEdit::textChanged, this, &MainWindow::updateCompleter);

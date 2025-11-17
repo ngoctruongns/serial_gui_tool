@@ -1,4 +1,6 @@
 #include "main_window.h"
+#include "log_highlighter.h"
+#include "highlight_rules_dialog.h"
 #include <QApplication>
 #include <QComboBox>
 #include <QDateTime>
@@ -104,9 +106,18 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     settingsAction->setShortcut(QKeySequence("Ctrl+,"));
     settingsMenu->addAction(settingsAction);
     connect(settingsAction, &QAction::triggered, this, &MainWindow::openSettings);
+    QAction *highlightSettingsAction = new QAction(tr("Highlight rules..."), this);
+    // Shortcut for quick access to highlight settings
+    highlightSettingsAction->setShortcut(QKeySequence("Ctrl+Shift+H"));
+    highlightSettingsAction->setShortcutContext(Qt::ApplicationShortcut);
+    settingsMenu->addAction(highlightSettingsAction);
+    connect(highlightSettingsAction, &QAction::triggered, this, &MainWindow::openHighlightRules);
 
     // Build UI in separate function to keep constructor short
     setupUi();
+
+    // Create highlighter bound to the log view's document
+    highlighter_ = new LogHighlighter(logView_->document());
 
     // Load quick group labels and update the group boxes
     loadQuickGroupLabels();
@@ -925,6 +936,22 @@ void MainWindow::openSettings()
     connect(cancelBtn, &QPushButton::clicked, dialog, &QDialog::reject);
 
     dialog->exec();
+}
+
+void MainWindow::openHighlightRules()
+{
+    HighlightRulesDialog dlg(this);
+    // When dialog emits rulesChanged, update highlighter immediately
+    connect(&dlg, &HighlightRulesDialog::rulesChanged, this, [this](const QVector<HighlightRule> &r) {
+        if (highlighter_)
+            highlighter_->setRules(r);
+    });
+
+    if (dlg.exec() == QDialog::Accepted) {
+        QVector<HighlightRule> r = dlg.rules();
+        if (highlighter_)
+            highlighter_->setRules(r);
+    }
 }
 
 void MainWindow::saveSettings()

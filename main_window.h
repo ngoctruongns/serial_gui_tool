@@ -149,4 +149,10 @@ private slots:
     void loadSettings();
     void saveQuickGroupLabels();
     void loadQuickGroupLabels();
+    // Highlight rules UI
+    void openHighlightRules();
+
+private:
+    // Highlighter for log view
+    class LogHighlighter *highlighter_ = nullptr;
 };

@@ -21,6 +21,8 @@ set(HEADER
     main_window.h
     serial_worker.h
     plot_widget.h
+    log_highlighter.h
+    highlight_rules_dialog.h
 )
 
 set(SOURCES
@@ -30,6 +32,8 @@ set(SOURCES
     search_helper.cpp
     serial_worker.cpp
     plot_widget.cpp
+    log_highlighter.cpp
+    highlight_rules_dialog.cpp
 )
 
 add_executable(${PROJECT_NAME}

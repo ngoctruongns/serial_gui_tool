@@ -482,7 +482,9 @@ void MainWindow::highlightSearchResults(const QString &term)
     QTextDocument *doc = logView_->document();
     QTextCursor cursor(doc);
     QTextCharFormat fmt;
-    fmt.setBackground(Qt::yellow);
+    fmt.setBackground(searchHighlightColor_);
+    // Keep text color consistent with log text color for readability
+    fmt.setForeground(logTextColor_);
 
     while (true) {
         cursor = doc->find(term, cursor);
@@ -892,6 +894,38 @@ void MainWindow::openSettings()
     group2Layout->addWidget(group2Edit);
     layout->addLayout(group2Layout);
 
+    // Log colors: background and text
+    QHBoxLayout *bgColorLayout = new QHBoxLayout();
+    QLabel *bgColorLabel = new QLabel(tr("Log background color:"));
+    QPushButton *bgColorBtn = new QPushButton(dialog);
+    bgColorBtn->setFixedWidth(60);
+    bgColorBtn->setStyleSheet(QString("background-color: %1;").arg(logBgColor_.name()));
+    bgColorLayout->addWidget(bgColorLabel);
+    bgColorLayout->addWidget(bgColorBtn);
+    bgColorLayout->addStretch();
+    layout->addLayout(bgColorLayout);
+
+    QHBoxLayout *textColorLayout = new QHBoxLayout();
+    QLabel *textColorLabel = new QLabel(tr("Log text color:"));
+    QPushButton *textColorBtn = new QPushButton(dialog);
+    textColorBtn->setFixedWidth(60);
+    textColorBtn->setStyleSheet(QString("background-color: %1;").arg(logTextColor_.name()));
+    textColorLayout->addWidget(textColorLabel);
+    textColorLayout->addWidget(textColorBtn);
+    textColorLayout->addStretch();
+    layout->addLayout(textColorLayout);
+
+    // Search highlight color
+    QHBoxLayout *searchHlLayout = new QHBoxLayout();
+    QLabel *searchHlLabel = new QLabel(tr("Search highlight color:"));
+    QPushButton *searchHlBtn = new QPushButton(dialog);
+    searchHlBtn->setFixedWidth(60);
+    searchHlBtn->setStyleSheet(QString("background-color: %1;").arg(searchHighlightColor_.name()));
+    searchHlLayout->addWidget(searchHlLabel);
+    searchHlLayout->addWidget(searchHlBtn);
+    searchHlLayout->addStretch();
+    layout->addLayout(searchHlLayout);
+
     // Auto Save on Exit Setting
     QHBoxLayout *autoSaveLayout = new QHBoxLayout();
     QCheckBox *autoSaveCheck = new QCheckBox(tr("Auto-save log when exiting"));
@@ -920,7 +954,11 @@ void MainWindow::openSettings()
         autoSaveOnExit_ = autoSaveCheck->isChecked();
 
         // Apply font size to logView_
-        logView_->setStyleSheet(QString("font-size: %1px;").arg(logFontSize_));
+        // Apply font size and colors to logView_
+        logView_->setStyleSheet(QString("font-size: %1px; background-color: %2; color: %3;")
+                                    .arg(logFontSize_)
+                                    .arg(logBgColor_.name())
+                                    .arg(logTextColor_.name()));
 
         // Update group box titles
         if (quickGroup1Box_)
@@ -931,6 +969,29 @@ void MainWindow::openSettings()
         saveSettings();
         saveQuickGroupLabels();
         dialog->accept();
+    });
+
+    // Color pickers: open QColorDialog and update button appearance and members
+    connect(bgColorBtn, &QPushButton::clicked, this, [this, bgColorBtn]() {
+        QColor c = QColorDialog::getColor(logBgColor_, this, tr("Choose log background color"));
+        if (c.isValid()) {
+            logBgColor_ = c;
+            bgColorBtn->setStyleSheet(QString("background-color: %1;").arg(c.name()));
+        }
+    });
+    connect(textColorBtn, &QPushButton::clicked, this, [this, textColorBtn]() {
+        QColor c = QColorDialog::getColor(logTextColor_, this, tr("Choose log text color"));
+        if (c.isValid()) {
+            logTextColor_ = c;
+            textColorBtn->setStyleSheet(QString("background-color: %1;").arg(c.name()));
+        }
+    });
+    connect(searchHlBtn, &QPushButton::clicked, this, [this, searchHlBtn]() {
+        QColor c = QColorDialog::getColor(searchHighlightColor_, this, tr("Choose search highlight color"));
+        if (c.isValid()) {
+            searchHighlightColor_ = c;
+            searchHlBtn->setStyleSheet(QString("background-color: %1;").arg(c.name()));
+        }
     });
 
     connect(cancelBtn, &QPushButton::clicked, dialog, &QDialog::reject);
@@ -982,6 +1043,9 @@ void MainWindow::saveSettings()
     out << "EOLMode=" << eolModeStr << "\n";
     out << "AutoSaveOnExit=" << (autoSaveOnExit_ ? "true" : "false") << "\n";
     out << "AutoScroll=" << (autoScrollEnabled_ ? "true" : "false") << "\n";
+    out << "LogBgColor=" << logBgColor_.name() << "\n";
+    out << "LogTextColor=" << logTextColor_.name() << "\n";
+    out << "SearchHighlightColor=" << searchHighlightColor_.name() << "\n";
     file.close();
 }
 
@@ -1014,6 +1078,18 @@ void MainWindow::loadSettings()
             logFontSize_ = value.toInt();
             if (logFontSize_ < 8)
                 logFontSize_ = 22;
+        } else if (key == "LogBgColor") {
+            QColor c(value);
+            if (c.isValid())
+                logBgColor_ = c;
+        } else if (key == "LogTextColor") {
+            QColor c(value);
+            if (c.isValid())
+                logTextColor_ = c;
+        } else if (key == "SearchHighlightColor") {
+            QColor c(value);
+            if (c.isValid())
+                searchHighlightColor_ = c;
         } else if (key == "EOLMode") {
             if (value == "NONE")
                 eolMode_ = "";
@@ -1028,6 +1104,11 @@ void MainWindow::loadSettings()
         }
     }
     file.close();
+    // Apply colors and font size to log view
+    logView_->setStyleSheet(QString("font-size: %1px; background-color: %2; color: %3;")
+                                .arg(logFontSize_)
+                                .arg(logBgColor_.name())
+                                .arg(logTextColor_.name()));
 }
 
 void MainWindow::saveQuickGroupLabels()

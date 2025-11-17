@@ -6,6 +6,7 @@
 #include <QStringList>
 #include "serial_worker.h"
 #include "plot_widget.h"
+#include <QColor>
 
 class QTextEdit;
 class QPlainTextEdit;
@@ -142,6 +143,10 @@ private slots:
     QString eolMode_ = "\n";  // "\n" for LF, "\r\n" for CR+LF
     bool autoSaveOnExit_ = false;  // Auto-save log when exiting app
     bool autoScrollEnabled_ = true;  // Auto-scroll to end of log
+    // Colors for log view and search highlight
+    QColor logBgColor_ = Qt::white;
+    QColor logTextColor_ = Qt::black;
+    QColor searchHighlightColor_ = Qt::yellow;
 
     // Settings management
     void openSettings();

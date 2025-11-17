@@ -313,11 +313,17 @@ void MainWindow::onError(const QString &msg)
 
 void MainWindow::log(const QString &msg)
 {
+    // Always move cursor to end before inserting new text
+    // This ensures new log entries are appended at the end, not at cursor position
+    QTextCursor cursor = logView_->textCursor();
+    cursor.movePosition(QTextCursor::End);
+    logView_->setTextCursor(cursor);
+
     logView_->insertPlainText(msg);
 
     // Auto scroll to end only if auto-scroll is enabled
     if (autoScrollEnabled_) {
-        QTextCursor cursor = logView_->textCursor();
+        cursor = logView_->textCursor();
         cursor.movePosition(QTextCursor::End);
         logView_->setTextCursor(cursor);
         logView_->ensureCursorVisible();

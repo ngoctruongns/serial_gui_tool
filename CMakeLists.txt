@@ -17,23 +17,26 @@ endif()
 
 find_package(Qt5 REQUIRED COMPONENTS Widgets SerialPort Charts)
 
+include_directories(include)
+
 set(HEADER
-    main_window.h
-    serial_worker.h
-    plot_widget.h
-    log_highlighter.h
-    highlight_rules_dialog.h
+    include/main_window.h
+    include/plot_widget.h
+    include/search_helper.h
+    include/serial_worker.h
+    include/log_highlighter.h
+    include/highlight_rules_dialog.h
 )
 
 set(SOURCES
-    main.cpp
-    main_window.cpp
-    main_window_ui.cpp
-    search_helper.cpp
-    serial_worker.cpp
-    plot_widget.cpp
-    log_highlighter.cpp
-    highlight_rules_dialog.cpp
+    src/main.cpp
+    src/main_window.cpp
+    src/main_window_ui.cpp
+    src/search_helper.cpp
+    src/serial_worker.cpp
+    src/plot_widget.cpp
+    src/log_highlighter.cpp
+    src/highlight_rules_dialog.cpp
 )
 
 add_executable(${PROJECT_NAME}

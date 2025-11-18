@@ -313,20 +313,39 @@ void MainWindow::onError(const QString &msg)
 
 void MainWindow::log(const QString &msg)
 {
+    // Save current scroll bar position
+    QScrollBar *vScrollBar = logView_->verticalScrollBar();
+    int currentScrollValue = vScrollBar->value();
+
+    // Get current cursor
+    QTextCursor cursor = logView_->textCursor();
+
+    // Save selection zone
+    bool hasSelection = cursor.hasSelection();
+    int selectionStart = cursor.selectionStart();
+    int selectionEnd = cursor.selectionEnd();
+
     // Always move cursor to end before inserting new text
     // This ensures new log entries are appended at the end, not at cursor position
-    QTextCursor cursor = logView_->textCursor();
     cursor.movePosition(QTextCursor::End);
     logView_->setTextCursor(cursor);
-
     logView_->insertPlainText(msg);
 
     // Auto scroll to end only if auto-scroll is enabled
     if (autoScrollEnabled_) {
-        cursor = logView_->textCursor();
-        cursor.movePosition(QTextCursor::End);
-        logView_->setTextCursor(cursor);
         logView_->ensureCursorVisible();
+    } else {
+        // Recovery scroll bar
+        vScrollBar->setValue(currentScrollValue);
+        // Recovery selection zone
+        if (hasSelection) {
+            QTextCursor restoreCursor = logView_->textCursor();
+
+            restoreCursor.setPosition(selectionStart);
+            restoreCursor.setPosition(selectionEnd, QTextCursor::KeepAnchor);
+
+            logView_->setTextCursor(restoreCursor);
+        }
     }
 
     // Update search highlights if search term is not empty

@@ -32,6 +32,7 @@ void MainWindow::setupUi()
     baudCombo_ = new QComboBox();
     loadBtn_ = new QPushButton(tr("Find Port"));
     openBtn_ = new QPushButton(tr("Open"));
+    spaceBtn_ = new QPushButton(tr("Space"));
     closeBtn_ = new QPushButton(tr("Close"));
     sendBtn_ = new QPushButton(tr("Send"));
     cmdLoadBtn_ = new QPushButton(tr("Load"));
@@ -168,6 +169,7 @@ void MainWindow::setupUi()
     h1->addWidget(hexCheck_);
     h1->addWidget(autoScrollCheck_);
     h1->addWidget(logReadOnlyCheck_);
+    h1->addWidget(spaceBtn_);
     h1->addWidget(openBtn_);
     h1->addWidget(closeBtn_);
 
@@ -288,6 +290,9 @@ void MainWindow::setupUi()
     });
     connect(logReadOnlyCheck_, &QCheckBox::stateChanged, this, [this](int state) {
         logView_->setReadOnly(state == Qt::Checked);
+    });
+    connect(spaceBtn_, &QPushButton::clicked, this, [this] () {
+        this->log("======================================================\n\n\n");
     });
     connect(commandLine_, &QLineEdit::returnPressed, this, &MainWindow::sendCommand);
     connect(searchLine_, &QLineEdit::textChanged, this, &MainWindow::updateCompleter);

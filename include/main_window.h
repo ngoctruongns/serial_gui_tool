@@ -92,6 +92,7 @@ private slots:
     QLineEdit *searchLine_;
     QLabel *searchCountLabel_;     // Label to show "x/y" search count
     QPushButton *loadBtn_;
+    QPushButton *spaceBtn_;
     QPushButton *openBtn_;
     QPushButton *closeBtn_;
     QPushButton *sendBtn_;

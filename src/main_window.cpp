@@ -20,6 +20,7 @@
 #include <QDialog>
 #include <QPlainTextEdit>
 #include <QKeyEvent>
+#include <QThread>
 
 // Implementation of CommandLineEdit with arrow key support
 CommandLineEdit::CommandLineEdit(QWidget *parent)
@@ -249,12 +250,37 @@ void MainWindow::sendAllCommands()
         return;
 
     QStringList lines = content.split('\n');
+    QRegularExpression reDelaySec(R"(^\s*delay\(\s*([0-9]+(?:\.[0-9]+)?)\s*\)\s*$)", QRegularExpression::CaseInsensitiveOption);
+    QRegularExpression reDelayMs(R"(^\s*delay_ms\(\s*([0-9]+)\s*\)\s*$)", QRegularExpression::CaseInsensitiveOption);
+
     for (const QString &raw : lines) {
         QString cmd = raw.trimmed();
         if (cmd.isEmpty())
             continue;
+
+        // Check for "delay(seconds)" special command
+        QRegularExpressionMatch m = reDelaySec.match(cmd);
+        if (m.hasMatch()) {
+            double secs = m.captured(1).toDouble();
+            log(QString("Delay %1 s\n").arg(secs));
+            unsigned long ms = static_cast<unsigned long>(secs * 1000.0);
+            if (ms > 0)
+                QThread::msleep(ms);
+            continue;
+        }
+
+        // Check for "delay_ms(ms)" special command
+        m = reDelayMs.match(cmd);
+        if (m.hasMatch()) {
+            unsigned long ms = m.captured(1).toULong();
+            log(QString("Delay %1 ms\n").arg(ms));
+            if (ms > 0)
+                QThread::msleep(ms);
+            continue;
+        }
+
+        // Normal command: set text and reuse sendCommand() for EOL/HEX handling
         commandLine_->setText(cmd);
-        // Reuse existing sendCommand() behavior to handle EOL and hex mode
         sendCommand();
     }
 }

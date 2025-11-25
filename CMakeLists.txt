@@ -33,3 +33,7 @@ target_link_libraries(${PROJECT_NAME}
     Qt5::SerialPort
     Qt5::Charts
 )
+
+if (WIN32)
+    set_property(TARGET ${PROJECT_NAME} PROPERTY WIN32_EXECUTABLE TRUE)
+endif()

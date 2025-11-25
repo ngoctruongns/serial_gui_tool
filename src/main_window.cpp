@@ -234,6 +234,31 @@ void MainWindow::sendCommand()
     }
 }
 
+void MainWindow::sendAllCommands()
+{
+    if (!worker_ || !worker_->isOpen()) {
+        QMessageBox::warning(this, "Warning", "Serial port not open");
+        return;
+    }
+
+    if (!cmdListView_)
+        return;
+
+    QString content = cmdListView_->toPlainText();
+    if (content.isEmpty())
+        return;
+
+    QStringList lines = content.split('\n');
+    for (const QString &raw : lines) {
+        QString cmd = raw.trimmed();
+        if (cmd.isEmpty())
+            continue;
+        commandLine_->setText(cmd);
+        // Reuse existing sendCommand() behavior to handle EOL and hex mode
+        sendCommand();
+    }
+}
+
 void MainWindow::onDataReceived(const QByteArray &data)
 {
     if (initFlag_) {

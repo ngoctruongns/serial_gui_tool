@@ -268,6 +268,20 @@ void MainWindow::setupUi()
 
     quickLayout->addWidget(quickGroup1Box_);
     quickLayout->addWidget(quickGroup2Box_);
+    // Batch command area: multi-line edit and Send All button placed under Group 2
+    QLabel *batchLabel = new QLabel(tr("Batch Commands"), this);
+    batchLabel->setAlignment(Qt::AlignLeft);
+    cmdListView_ = new QPlainTextEdit(this);
+    cmdListView_->setPlaceholderText(tr("Enter one command per line"));
+    cmdListView_->setMaximumHeight(140);
+    // Load previously saved batch commands (if any)
+    cmdListView_->setPlainText(loadCommandsFromFile());
+    sendAllBtn_ = new QPushButton(tr("Send All"), this);
+    sendAllBtn_->setMaximumWidth(100);
+    // Add label, editor and button to the quick panel
+    quickLayout->addWidget(batchLabel);
+    quickLayout->addWidget(cmdListView_);
+    quickLayout->addWidget(sendAllBtn_);
     quickLayout->addStretch(1);
     mainArea->addWidget(quickContainer, /*stretch=*/0);
 
@@ -402,6 +416,9 @@ void MainWindow::setupUi()
     makeEditHandler(quickBtn8_, quickEditBtn8_, tr("CMD7"));
     makeEditHandler(quickBtn9_, quickEditBtn9_, tr("CMD8"));
     makeEditHandler(quickBtn10_, quickEditBtn10_, tr("CMD9"));
+
+    // Connect batch-send button
+    connect(sendAllBtn_, &QPushButton::clicked, this, &MainWindow::sendAllCommands);
 
     // Keyboard shortcuts for search navigation: F3 = next, Shift+F3 = previous
     QShortcut *next = new QShortcut(QKeySequence("F3"), this);

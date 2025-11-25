@@ -59,6 +59,7 @@ private slots:
     void onShowPlotTriggered();
     void clearLogs();
     void loadCommands();
+    void sendAllCommands();
 
     private:
     void updatePortList();
@@ -125,6 +126,12 @@ private slots:
     QString quickGroup2Label_;
     QGroupBox *quickGroup1Box_;
     QGroupBox *quickGroup2Box_;
+
+    // Batch command area: multi-line edit and Send All button placed under Group 2
+    QPlainTextEdit *cmdListView_;
+    QPushButton *sendAllBtn_;
+
+    // Basic UI elements for serial port configuration and control
     QPushButton *searchUpBtn_;
     QPushButton *searchDownBtn_;
     QPushButton *clearBtn_;

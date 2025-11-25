@@ -21,6 +21,7 @@
 #include <QPlainTextEdit>
 #include <QKeyEvent>
 #include <QThread>
+#include <QRandomGenerator>
 
 // Implementation of CommandLineEdit with arrow key support
 CommandLineEdit::CommandLineEdit(QWidget *parent)
@@ -252,11 +253,20 @@ void MainWindow::sendAllCommands()
     QStringList lines = content.split('\n');
     QRegularExpression reDelaySec(R"(^\s*delay\(\s*([0-9]+(?:\.[0-9]+)?)\s*\)\s*$)", QRegularExpression::CaseInsensitiveOption);
     QRegularExpression reDelayMs(R"(^\s*delay_ms\(\s*([0-9]+)\s*\)\s*$)", QRegularExpression::CaseInsensitiveOption);
+    QRegularExpression reRandDelay(R"(^\s*rand_delay\(\s*([0-9]+)\s*,\s*([0-9]+)\s*\)\s*$)", QRegularExpression::CaseInsensitiveOption);
+    QRegularExpression reComment(R"(^\s*comment\(.*\)\s*$)", QRegularExpression::CaseInsensitiveOption);
 
     for (const QString &raw : lines) {
         QString cmd = raw.trimmed();
         if (cmd.isEmpty())
             continue;
+
+        // Check for comment lines (start with # or comment(...))
+        if (cmd.startsWith('#') || reComment.match(cmd).hasMatch()) {
+            // Log comment (optional, for debugging)
+            log(QString("# %1\n").arg(cmd));
+            continue;
+        }
 
         // Check for "delay(seconds)" special command
         QRegularExpressionMatch m = reDelaySec.match(cmd);
@@ -276,6 +286,20 @@ void MainWindow::sendAllCommands()
             log(QString("Delay %1 ms\n").arg(ms));
             if (ms > 0)
                 QThread::msleep(ms);
+            continue;
+        }
+
+        // Check for "rand_delay(min_ms, max_ms)" special command
+        m = reRandDelay.match(cmd);
+        if (m.hasMatch()) {
+            quint32 minMs = m.captured(1).toUInt();
+            quint32 maxMs = m.captured(2).toUInt();
+            if (minMs > maxMs)
+                std::swap(minMs, maxMs);
+            quint32 delayMs = QRandomGenerator::global()->bounded(minMs, maxMs + 1);
+            log(QString("Random Delay %1 ms (range %2-%3 ms)\n").arg(delayMs).arg(minMs).arg(maxMs));
+            if (delayMs > 0)
+                QThread::msleep(delayMs);
             continue;
         }
 

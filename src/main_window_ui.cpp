@@ -216,7 +216,8 @@ void MainWindow::setupUi()
 
     // Create two groups: Group 1 (buttons 0-4) and Group 2 (buttons 5-9)
     // Helper to create a group with border and label - buttons arranged vertically
-    auto createQuickGroup = [this](const QString &title, QPushButton **btns, QPushButton **editBtns, int count) -> QGroupBox* {
+    // `editWidgets` can be any QWidget (we use `CommandLineEdit` instances)
+    auto createQuickGroup = [this](const QString &title, QPushButton **btns, QWidget **editWidgets, int count) -> QGroupBox* {
         QGroupBox *groupBox = new QGroupBox(title, this);
         QVBoxLayout *groupLayout = new QVBoxLayout(groupBox);
         groupLayout->setContentsMargins(8, 8, 8, 8);
@@ -225,8 +226,8 @@ void MainWindow::setupUi()
         for (int i = 0; i < count; ++i) {
             btns[i]->setMaximumWidth(80);
             btns[i]->setMinimumWidth(70);
-            editBtns[i]->setMaximumWidth(32);
-            editBtns[i]->setMinimumWidth(32);
+            editWidgets[i]->setMaximumWidth(160);
+            editWidgets[i]->setMinimumWidth(80);
 
             // Arrange button and edit button horizontally
             QWidget *row = new QWidget(this);
@@ -234,7 +235,7 @@ void MainWindow::setupUi()
             rowLayout->setContentsMargins(0, 0, 0, 0);
             rowLayout->setSpacing(2);
             rowLayout->addWidget(btns[i], 1);  // button gets more space
-            rowLayout->addWidget(editBtns[i], 0);
+            rowLayout->addWidget(editWidgets[i], 0);
 
             groupLayout->addWidget(row);
         }
@@ -242,27 +243,39 @@ void MainWindow::setupUi()
         return groupBox;
     };
 
-    // Setup edit buttons
-    quickEditBtn1_ = new QPushButton(tr("..."), this);
-    quickEditBtn2_ = new QPushButton(tr("..."), this);
-    quickEditBtn3_ = new QPushButton(tr("..."), this);
-    quickEditBtn4_ = new QPushButton(tr("..."), this);
-    quickEditBtn5_ = new QPushButton(tr("..."), this);
-    quickEditBtn6_ = new QPushButton(tr("..."), this);
-    quickEditBtn7_ = new QPushButton(tr("..."), this);
-    quickEditBtn8_ = new QPushButton(tr("..."), this);
-    quickEditBtn9_ = new QPushButton(tr("..."), this);
-    quickEditBtn10_ = new QPushButton(tr("..."), this);
+    // Setup inline edit widgets (CommandLineEdit) so users can see/edit commands
+    quickEdit1_ = new CommandLineEdit(this);
+    quickEdit2_ = new CommandLineEdit(this);
+    quickEdit3_ = new CommandLineEdit(this);
+    quickEdit4_ = new CommandLineEdit(this);
+    quickEdit5_ = new CommandLineEdit(this);
+    quickEdit6_ = new CommandLineEdit(this);
+    quickEdit7_ = new CommandLineEdit(this);
+    quickEdit8_ = new CommandLineEdit(this);
+    quickEdit9_ = new CommandLineEdit(this);
+    quickEdit10_ = new CommandLineEdit(this);
+
+    // Give a helpful placeholder so users know they can edit inline
+    quickEdit1_->setPlaceholderText(tr("Edit command..."));
+    quickEdit2_->setPlaceholderText(tr("Edit command..."));
+    quickEdit3_->setPlaceholderText(tr("Edit command..."));
+    quickEdit4_->setPlaceholderText(tr("Edit command..."));
+    quickEdit5_->setPlaceholderText(tr("Edit command..."));
+    quickEdit6_->setPlaceholderText(tr("Edit command..."));
+    quickEdit7_->setPlaceholderText(tr("Edit command..."));
+    quickEdit8_->setPlaceholderText(tr("Edit command..."));
+    quickEdit9_->setPlaceholderText(tr("Edit command..."));
+    quickEdit10_->setPlaceholderText(tr("Edit command..."));
 
     // Create group 1 (buttons 0-4)
     QPushButton *group1Btns[] = {quickBtn1_, quickBtn2_, quickBtn3_, quickBtn4_, quickBtn5_};
-    QPushButton *group1Edits[] = {quickEditBtn1_, quickEditBtn2_, quickEditBtn3_, quickEditBtn4_, quickEditBtn5_};
+    QWidget *group1Edits[] = {quickEdit1_, quickEdit2_, quickEdit3_, quickEdit4_, quickEdit5_};
     quickGroup1Label_ = "Group 1";
     quickGroup1Box_ = createQuickGroup(quickGroup1Label_, group1Btns, group1Edits, 5);
 
     // Create group 2 (buttons 5-9)
     QPushButton *group2Btns[] = {quickBtn6_, quickBtn7_, quickBtn8_, quickBtn9_, quickBtn10_};
-    QPushButton *group2Edits[] = {quickEditBtn6_, quickEditBtn7_, quickEditBtn8_, quickEditBtn9_, quickEditBtn10_};
+    QWidget *group2Edits[] = {quickEdit6_, quickEdit7_, quickEdit8_, quickEdit9_, quickEdit10_};
     quickGroup2Label_ = "Group 2";
     quickGroup2Box_ = createQuickGroup(quickGroup2Label_, group2Btns, group2Edits, 5);
 
@@ -359,8 +372,8 @@ void MainWindow::setupUi()
         if (!cmd.isEmpty()) { commandLine_->setText(cmd); sendCommand(); }
     });
 
-    // Edit-button handlers: open an input dialog, store the string in the
-    // quick button's "command" property and update its tooltip for visibility.
+    // Edit handlers: when the inline editor finishes editing, store the
+    // string in the quick button's "command" property and update its tooltip.
     // Helper to persist all quick commands to cmd/quick_command.txt
     auto saveAllQuickCommands = [this]() {
         QDir dir(QDir::currentPath());
@@ -390,32 +403,48 @@ void MainWindow::setupUi()
 
     // Capture saveAllQuickCommands by value so the inner lambdas keep a valid
     // copy after setupUi() returns (capturing by reference caused a crash).
-    auto makeEditHandler = [this, saveAllQuickCommands](QPushButton *quick, QPushButton *edit, const QString &label) {
-        connect(edit, &QPushButton::clicked, this, [this, quick, label, saveAllQuickCommands]() {
-            bool ok = false;
-            QString current = quick->property("command").toString();
-            QString text = QInputDialog::getText(this, tr("Set Quick Command"),
-                                                tr("Command for %1:").arg(label),
-                                                QLineEdit::Normal, current, &ok);
-            if (ok) {
-                quick->setProperty("command", text);
-                quick->setToolTip(text);
-                // Persist all quick commands to disk
-                saveAllQuickCommands();
-            }
+    auto makeEditHandler = [this, saveAllQuickCommands](QPushButton *quick, CommandLineEdit *edit, const QString &label) {
+        // When user finishes editing, update the quick command and persist
+        connect(edit, &QLineEdit::editingFinished, this, [this, quick, edit, saveAllQuickCommands]() {
+            QString text = edit->text().trimmed();
+            quick->setProperty("command", text);
+            quick->setToolTip(text);
+            saveAllQuickCommands();
         });
     };
 
-    makeEditHandler(quickBtn1_, quickEditBtn1_, tr("CMD0"));
-    makeEditHandler(quickBtn2_, quickEditBtn2_, tr("CMD1"));
-    makeEditHandler(quickBtn3_, quickEditBtn3_, tr("CMD2"));
-    makeEditHandler(quickBtn4_, quickEditBtn4_, tr("CMD3"));
-    makeEditHandler(quickBtn5_, quickEditBtn5_, tr("CMD4"));
-    makeEditHandler(quickBtn6_, quickEditBtn6_, tr("CMD5"));
-    makeEditHandler(quickBtn7_, quickEditBtn7_, tr("CMD6"));
-    makeEditHandler(quickBtn8_, quickEditBtn8_, tr("CMD7"));
-    makeEditHandler(quickBtn9_, quickEditBtn9_, tr("CMD8"));
-    makeEditHandler(quickBtn10_, quickEditBtn10_, tr("CMD9"));
+    makeEditHandler(quickBtn1_, quickEdit1_, tr("CMD0"));
+    makeEditHandler(quickBtn2_, quickEdit2_, tr("CMD1"));
+    makeEditHandler(quickBtn3_, quickEdit3_, tr("CMD2"));
+    makeEditHandler(quickBtn4_, quickEdit4_, tr("CMD3"));
+    makeEditHandler(quickBtn5_, quickEdit5_, tr("CMD4"));
+    makeEditHandler(quickBtn6_, quickEdit6_, tr("CMD5"));
+    makeEditHandler(quickBtn7_, quickEdit7_, tr("CMD6"));
+    makeEditHandler(quickBtn8_, quickEdit8_, tr("CMD7"));
+    makeEditHandler(quickBtn9_, quickEdit9_, tr("CMD8"));
+    makeEditHandler(quickBtn10_, quickEdit10_, tr("CMD9"));
+
+    // Populate inline editors from the quick button properties (loaded earlier)
+    quickEdit1_->setText(quickBtn1_->property("command").toString());
+    quickEdit1_->setToolTip(quickEdit1_->text().isEmpty() ? tr("Edit command...") : quickEdit1_->text());
+    quickEdit2_->setText(quickBtn2_->property("command").toString());
+    quickEdit2_->setToolTip(quickEdit2_->text().isEmpty() ? tr("Edit command...") : quickEdit2_->text());
+    quickEdit3_->setText(quickBtn3_->property("command").toString());
+    quickEdit3_->setToolTip(quickEdit3_->text().isEmpty() ? tr("Edit command...") : quickEdit3_->text());
+    quickEdit4_->setText(quickBtn4_->property("command").toString());
+    quickEdit4_->setToolTip(quickEdit4_->text().isEmpty() ? tr("Edit command...") : quickEdit4_->text());
+    quickEdit5_->setText(quickBtn5_->property("command").toString());
+    quickEdit5_->setToolTip(quickEdit5_->text().isEmpty() ? tr("Edit command...") : quickEdit5_->text());
+    quickEdit6_->setText(quickBtn6_->property("command").toString());
+    quickEdit6_->setToolTip(quickEdit6_->text().isEmpty() ? tr("Edit command...") : quickEdit6_->text());
+    quickEdit7_->setText(quickBtn7_->property("command").toString());
+    quickEdit7_->setToolTip(quickEdit7_->text().isEmpty() ? tr("Edit command...") : quickEdit7_->text());
+    quickEdit8_->setText(quickBtn8_->property("command").toString());
+    quickEdit8_->setToolTip(quickEdit8_->text().isEmpty() ? tr("Edit command...") : quickEdit8_->text());
+    quickEdit9_->setText(quickBtn9_->property("command").toString());
+    quickEdit9_->setToolTip(quickEdit9_->text().isEmpty() ? tr("Edit command...") : quickEdit9_->text());
+    quickEdit10_->setText(quickBtn10_->property("command").toString());
+    quickEdit10_->setToolTip(quickEdit10_->text().isEmpty() ? tr("Edit command...") : quickEdit10_->text());
 
     // Connect batch-send button
     connect(sendAllBtn_, &QPushButton::clicked, this, &MainWindow::sendAllCommands);

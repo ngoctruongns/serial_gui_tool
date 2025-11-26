@@ -109,18 +109,18 @@ private slots:
     QPushButton *quickBtn8_;
     QPushButton *quickBtn9_;
     QPushButton *quickBtn10_;
-    // Small edit buttons next to each quick-send button to configure the
-    // command string shown/sent when the quick button is pressed.
-    QPushButton *quickEditBtn1_;
-    QPushButton *quickEditBtn2_;
-    QPushButton *quickEditBtn3_;
-    QPushButton *quickEditBtn4_;
-    QPushButton *quickEditBtn5_;
-    QPushButton *quickEditBtn6_;
-    QPushButton *quickEditBtn7_;
-    QPushButton *quickEditBtn8_;
-    QPushButton *quickEditBtn9_;
-    QPushButton *quickEditBtn10_;
+    // Small inline editors next to each quick-send button so the user can
+    // directly view and edit the associated command string.
+    CommandLineEdit *quickEdit1_;
+    CommandLineEdit *quickEdit2_;
+    CommandLineEdit *quickEdit3_;
+    CommandLineEdit *quickEdit4_;
+    CommandLineEdit *quickEdit5_;
+    CommandLineEdit *quickEdit6_;
+    CommandLineEdit *quickEdit7_;
+    CommandLineEdit *quickEdit8_;
+    CommandLineEdit *quickEdit9_;
+    CommandLineEdit *quickEdit10_;
     // Group labels for quick buttons
     QString quickGroup1Label_;
     QString quickGroup2Label_;

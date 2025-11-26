@@ -8,6 +8,7 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QPlainTextEdit>
+#include <QSplitter>
 #include <QGridLayout>
 #include <QSerialPortInfo>
 #include <QTextEdit>
@@ -202,13 +203,14 @@ void MainWindow::setupUi()
     vbox->addLayout(h1);
     vbox->addLayout(g);
 
-    // Main area: log view on the left, quick-send buttons stacked vertically on the right
-    QHBoxLayout *mainArea = new QHBoxLayout();
-    mainArea->setContentsMargins(0, 0, 0, 0);
-    mainArea->setSpacing(6);
-    // Let logView_ expand to take most space
-    mainArea->addWidget(logView_, /*stretch=*/1);
+    // Main area: use a QSplitter so user can resize between log view and
+    // the quick-send panel. This lets the command editors and batch area
+    // expand when the user drags the splitter.
+    QSplitter *split = new QSplitter(Qt::Horizontal, this);
+    split->setContentsMargins(0, 0, 0, 0);
 
+    // Let logView_ expand to take most space by default (splitter sizes set later)
+    // Create quick panel container
     QWidget *quickContainer = new QWidget(this);
     QVBoxLayout *quickLayout = new QVBoxLayout(quickContainer);
     quickLayout->setContentsMargins(5, 5, 5, 5);
@@ -226,7 +228,8 @@ void MainWindow::setupUi()
         for (int i = 0; i < count; ++i) {
             btns[i]->setMaximumWidth(80);
             btns[i]->setMinimumWidth(70);
-            editWidgets[i]->setMaximumWidth(160);
+            // Allow edit widgets to expand to fill remaining space; do not
+            // cap the maximum width so they can grow to the splitter size.
             editWidgets[i]->setMinimumWidth(80);
 
             // Arrange button and edit button horizontally
@@ -234,8 +237,15 @@ void MainWindow::setupUi()
             QHBoxLayout *rowLayout = new QHBoxLayout(row);
             rowLayout->setContentsMargins(0, 0, 0, 0);
             rowLayout->setSpacing(2);
-            rowLayout->addWidget(btns[i], 1);  // button gets more space
-            rowLayout->addWidget(editWidgets[i], 0);
+            // Make the quick button a fixed/preferred widget on the left
+            btns[i]->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+            // Let the edit widget expand to take remaining horizontal space
+            editWidgets[i]->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+            // Add button and editor, then add a trailing stretch so both
+            // widgets are packed to the left and any extra space remains on the right.
+            rowLayout->addWidget(btns[i], /*stretch=*/0);
+            rowLayout->addWidget(editWidgets[i], /*stretch=*/1);
+            rowLayout->addStretch(/*stretch=*/0);
 
             groupLayout->addWidget(row);
         }
@@ -296,9 +306,12 @@ void MainWindow::setupUi()
     quickLayout->addWidget(cmdListView_);
     quickLayout->addWidget(sendAllBtn_);
     quickLayout->addStretch(1);
-    mainArea->addWidget(quickContainer, /*stretch=*/0);
-
-    vbox->addLayout(mainArea);
+    // Add widgets to the splitter and set reasonable initial sizes
+    split->addWidget(logView_);
+    split->addWidget(quickContainer);
+    // Prefer log view to take most space initially
+    split->setSizes({1000, 360});
+    vbox->addWidget(split);
 
     setCentralWidget(central);
     setWindowTitle(tr("Serial GUI Tool"));

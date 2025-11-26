@@ -528,6 +528,10 @@ void MainWindow::exitApp()
         }
     }
 
+    // Save batch command to file
+    QString content = cmdListView_->toPlainText();
+    saveToFile(BATCH_COMMAND_FILE_PATH, content);
+
     // Close plot window if open, then quit
     if (plotWindow_) {
         plotWindow_->close();
@@ -789,22 +793,27 @@ void MainWindow::clearLogs()
     showMessageAutoClose("Info", QString("Deleted %1 log file(s).").arg(deletedCount), 1500);
 }
 
-QString MainWindow::loadCommandsFromFile()
+// Return empty string if file doesn't exist
+QString MainWindow::loadFromFile(QString fPath)
 {
+    QStringList listPath = fPath.split('/', Qt::SkipEmptyParts);
+    QString folder_ = listPath.at(0);
+    // QString file_ = listPath.at(1);
+
     QDir dir(QDir::currentPath());
-    if (!dir.exists("cmd")) {
-        dir.mkdir("cmd");
+    if (!dir.exists(folder_)) {
+        dir.mkdir(folder_);
     }
 
-    QString filePath = dir.filePath("cmd/command.txt");
+    QString filePath = dir.filePath(fPath);
     QFile file(filePath);
 
     if (!file.exists()) {
-        return QString(); // Return empty string if file doesn't exist
+        return QString(); 
     }
 
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        QMessageBox::warning(this, "Error", "Unable to read command file: " + filePath);
+        QMessageBox::warning(this, "Error", "Unable to read batch command file: " + filePath);
         return QString();
     }
 
@@ -815,24 +824,40 @@ QString MainWindow::loadCommandsFromFile()
     return content;
 }
 
-void MainWindow::saveCommandsToFile(const QString &content)
+// Return -1 if save file failed, 0 if save success
+int MainWindow::saveToFile(QString fPath, const QString &content)
 {
+    QStringList listPath = fPath.split('/', Qt::SkipEmptyParts);
+    QString folder_ = listPath.at(0);
+    // QString file_ = listPath.at(1);
+
     QDir dir(QDir::currentPath());
-    if (!dir.exists("cmd")) {
-        dir.mkdir("cmd");
+    if (!dir.exists(folder_)) {
+        dir.mkdir(folder_);
     }
 
-    QString filePath = dir.filePath("cmd/command.txt");
+    QString filePath = dir.filePath(fPath);
     QFile file(filePath);
 
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        QMessageBox::warning(this, "Error", "Unable to write to command file: " + filePath);
-        return;
+        QMessageBox::warning(this, "Error", "Unable to write to batch command file: " + filePath);
+        return -1;
     }
 
     QTextStream out(&file);
     out << content;
     file.close();
+    return 0;
+}
+
+QString MainWindow::loadCommandsFromFile()
+{
+    return loadFromFile(COMMAND_FILE_PATH);
+}
+
+void MainWindow::saveCommandsToFile(const QString &content)
+{
+    saveToFile(COMMAND_FILE_PATH, content);
 }
 
 void MainWindow::loadCommands()
@@ -1117,19 +1142,8 @@ void MainWindow::openHighlightRules()
 
 void MainWindow::saveSettings()
 {
-    QDir dir(QDir::currentPath());
-    if (!dir.exists("cmd"))
-        dir.mkdir("cmd");
-
-    QString filePath = dir.filePath("cmd/settings.txt");
-    QFile file(filePath);
-
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        QMessageBox::warning(this, "Error", "Unable to write to settings file: " + filePath);
-        return;
-    }
-
-    QTextStream out(&file);
+    QString content;
+    QTextStream out(&content);
     out << "FontSize=" << logFontSize_ << "\n";
 
     QString eolModeStr;
@@ -1146,7 +1160,9 @@ void MainWindow::saveSettings()
     out << "LogBgColor=" << logBgColor_.name() << "\n";
     out << "LogTextColor=" << logTextColor_.name() << "\n";
     out << "SearchHighlightColor=" << searchHighlightColor_.name() << "\n";
-    file.close();
+
+    // Save content to setting file
+    saveToFile(SETTING_FILE_PATH, content.toUtf8());
 }
 
 void MainWindow::loadSettings()
@@ -1155,7 +1171,7 @@ void MainWindow::loadSettings()
     if (!dir.exists("cmd"))
         return;
 
-    QString filePath = dir.filePath("cmd/settings.txt");
+    QString filePath = dir.filePath(SETTING_FILE_PATH);
     QFile file(filePath);
 
     if (!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text))
@@ -1213,21 +1229,11 @@ void MainWindow::loadSettings()
 
 void MainWindow::saveQuickGroupLabels()
 {
-    QDir dir(QDir::currentPath());
-    if (!dir.exists("cmd"))
-        dir.mkdir("cmd");
-
-    QString filePath = dir.filePath("cmd/quick_groups.txt");
-    QFile file(filePath);
-
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        return;
-    }
-
-    QTextStream out(&file);
+    QString content;
+    QTextStream out(&content);
     out << "Group1=" << quickGroup1Label_ << "\n";
     out << "Group2=" << quickGroup2Label_ << "\n";
-    file.close();
+    saveToFile(QUICK_GROUP_FILE_PATH, content.toUtf8());
 }
 
 void MainWindow::loadQuickGroupLabels()
@@ -1236,7 +1242,7 @@ void MainWindow::loadQuickGroupLabels()
     if (!dir.exists("cmd"))
         return;
 
-    QString filePath = dir.filePath("cmd/quick_groups.txt");
+    QString filePath = dir.filePath(QUICK_GROUP_FILE_PATH);
     QFile file(filePath);
 
     if (!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text))

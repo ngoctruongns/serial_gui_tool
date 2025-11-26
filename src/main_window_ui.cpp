@@ -96,7 +96,7 @@ void MainWindow::setupUi()
         QDir dir(QDir::currentPath());
         if (!dir.exists("cmd"))
             dir.mkdir("cmd");
-        QString filePath = dir.filePath("cmd/quick_command.txt");
+        QString filePath = dir.filePath(QUICK_COMMAND_FILE_PATH);
         QFile file(filePath);
         if (file.exists() && file.open(QIODevice::ReadOnly | QIODevice::Text)) {
             QTextStream in(&file);
@@ -298,7 +298,7 @@ void MainWindow::setupUi()
     cmdListView_->setPlaceholderText(tr("Enter one command per line"));
     cmdListView_->setMaximumHeight(140);
     // Load previously saved batch commands (if any)
-    cmdListView_->setPlainText(loadCommandsFromFile());
+    cmdListView_->setPlainText(loadFromFile(BATCH_COMMAND_FILE_PATH));
     sendAllBtn_ = new QPushButton(tr("Send All"), this);
     sendAllBtn_->setMaximumWidth(100);
     // Add label, editor and button to the quick panel
@@ -392,7 +392,7 @@ void MainWindow::setupUi()
         QDir dir(QDir::currentPath());
         if (!dir.exists("cmd"))
             dir.mkdir("cmd");
-        QString filePath = dir.filePath("cmd/quick_command.txt");
+        QString filePath = dir.filePath(QUICK_COMMAND_FILE_PATH);
         QFile file(filePath);
         if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
             // If cannot open, silently ignore to avoid interrupting user

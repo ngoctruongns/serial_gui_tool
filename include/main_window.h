@@ -8,6 +8,13 @@
 #include "plot_widget.h"
 #include <QColor>
 
+// Define file paths
+#define COMMAND_FILE_PATH "cmd/command.txt"
+#define BATCH_COMMAND_FILE_PATH "cmd/batch_command.txt"
+#define QUICK_COMMAND_FILE_PATH "cmd/quick_command.txt"
+#define QUICK_GROUP_FILE_PATH "cmd/quick_groups.txt"
+#define SETTING_FILE_PATH "cmd/settings.txt"
+
 class QTextEdit;
 class QPlainTextEdit;
 class QCompleter;
@@ -73,6 +80,10 @@ private slots:
     void timerHandler();
     void showMessageAutoClose(const QString &title, const QString &msg, int timeoutMs = 1500);
     void setupUi();
+
+    QString loadFromFile(QString filePath);
+    int saveToFile(QString fPath, const QString &content);
+
     QString loadCommandsFromFile();
     void saveCommandsToFile(const QString &content);
     void updateCommandCompleter();

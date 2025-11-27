@@ -291,9 +291,8 @@ void MainWindow::setupUi()
 
     quickLayout->addWidget(quickGroup1Box_);
     quickLayout->addWidget(quickGroup2Box_);
+    
     // Batch command area: multi-line edit and Send All button placed under Group 2
-    QLabel *batchLabel = new QLabel(tr("Batch Commands"), this);
-    batchLabel->setAlignment(Qt::AlignLeft);
     cmdListView_ = new QPlainTextEdit(this);
     cmdListView_->setPlaceholderText(tr("Enter one command per line"));
     cmdListView_->setMaximumHeight(140);

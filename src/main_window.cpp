@@ -20,8 +20,6 @@
 #include <QDialog>
 #include <QPlainTextEdit>
 #include <QKeyEvent>
-#include <QThread>
-#include <QRandomGenerator>
 
 // Implementation of CommandLineEdit with arrow key support
 CommandLineEdit::CommandLineEdit(QWidget *parent)
@@ -66,7 +64,7 @@ void CommandLineEdit::keyPressEvent(QKeyEvent *event)
     }
 
     // For any other key, reset history index when user types
-    if (event->text().length() > 0 && !event->text()[0].isNull()) {
+    if (event->text().length() > 0 && !event->text().at(0).isNull()) {
         historyIndex_ = -1;
     }
 
@@ -226,7 +224,7 @@ void MainWindow::sendCommand()
         // parse input string as hex
         QByteArray bytes;
         QStringList parts = cmd.split(' ', Qt::SkipEmptyParts);
-        for (const QString &p : parts)
+        for (const QString &p : qAsConst(parts))
             bytes.append(static_cast<char>(p.toUInt(nullptr, 16)));
         worker_->sendData(bytes);
         log("TX (HEX): " + cmd);
@@ -251,59 +249,13 @@ void MainWindow::sendAllCommands()
         return;
 
     QStringList lines = content.split('\n');
-    QRegularExpression reDelaySec(R"(^\s*delay\(\s*([0-9]+(?:\.[0-9]+)?)\s*\)\s*$)", QRegularExpression::CaseInsensitiveOption);
-    QRegularExpression reDelayMs(R"(^\s*delay_ms\(\s*([0-9]+)\s*\)\s*$)", QRegularExpression::CaseInsensitiveOption);
-    QRegularExpression reRandDelay(R"(^\s*rand_delay\(\s*([0-9]+)\s*,\s*([0-9]+)\s*\)\s*$)", QRegularExpression::CaseInsensitiveOption);
-    QRegularExpression reComment(R"(^\s*comment\(.*\)\s*$)", QRegularExpression::CaseInsensitiveOption);
+    batchProc_->processBatchFile(lines);
+}
 
-    for (const QString &raw : lines) {
-        QString cmd = raw.trimmed();
-        if (cmd.isEmpty())
-            continue;
-
-        // Check for comment lines (start with # or comment(...))
-        if (cmd.startsWith('#') || reComment.match(cmd).hasMatch()) {
-            // Log comment (optional, for debugging)
-            log(QString("# %1\n").arg(cmd));
-            continue;
-        }
-
-        // Check for "delay(seconds)" special command
-        QRegularExpressionMatch m = reDelaySec.match(cmd);
-        if (m.hasMatch()) {
-            double secs = m.captured(1).toDouble();
-            log(QString("Delay %1 s\n").arg(secs));
-            unsigned long ms = static_cast<unsigned long>(secs * 1000.0);
-            if (ms > 0)
-                QThread::msleep(ms);
-            continue;
-        }
-
-        // Check for "delay_ms(ms)" special command
-        m = reDelayMs.match(cmd);
-        if (m.hasMatch()) {
-            unsigned long ms = m.captured(1).toULong();
-            log(QString("Delay %1 ms\n").arg(ms));
-            if (ms > 0)
-                QThread::msleep(ms);
-            continue;
-        }
-
-        // Check for "rand_delay(min_ms, max_ms)" special command
-        m = reRandDelay.match(cmd);
-        if (m.hasMatch()) {
-            quint32 minMs = m.captured(1).toUInt();
-            quint32 maxMs = m.captured(2).toUInt();
-            if (minMs > maxMs)
-                std::swap(minMs, maxMs);
-            quint32 delayMs = QRandomGenerator::global()->bounded(minMs, maxMs + 1);
-            log(QString("Random Delay %1 ms (range %2-%3 ms)\n").arg(delayMs).arg(minMs).arg(maxMs));
-            if (delayMs > 0)
-                QThread::msleep(delayMs);
-            continue;
-        }
-
-        // Normal command: set text and reuse sendCommand() for EOL/HEX handling
+void MainWindow::setTextAndSendCommand(const QString &cmd)
+{
+    // Normal command: set text and reuse sendCommand() for EOL/HEX handling
+    if (!cmd.isEmpty()) {
         commandLine_->setText(cmd);
         sendCommand();
     }

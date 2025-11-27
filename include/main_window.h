@@ -4,9 +4,10 @@
 #include <QCheckBox>
 #include <QLineEdit>
 #include <QStringList>
+#include <QColor>
 #include "serial_worker.h"
 #include "plot_widget.h"
-#include <QColor>
+#include "batch_command.h"
 
 // Define file paths
 #define COMMAND_FILE_PATH "cmd/command.txt"
@@ -54,6 +55,7 @@ private slots:
     void openSerial();
     void closeSerial();
     void sendCommand();
+    void setTextAndSendCommand(const QString &cmd);
     void onDataReceived(const QByteArray &data);
     void onError(const QString &msg);
     void searchLog();
@@ -68,7 +70,7 @@ private slots:
     void loadCommands();
     void sendAllCommands();
 
-    private:
+private:
     void updatePortList();
     void log(const QString &msg);
     void onDataPlotter(const QString &line);
@@ -141,6 +143,7 @@ private slots:
     // Batch command area: multi-line edit and Send All button placed under Group 2
     QPlainTextEdit *cmdListView_;
     QPushButton *sendAllBtn_;
+    BatchProcessor *batchProc_;
 
     // Basic UI elements for serial port configuration and control
     QPushButton *searchUpBtn_;

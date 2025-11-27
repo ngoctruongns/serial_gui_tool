@@ -301,6 +301,7 @@ void MainWindow::setupUi()
     cmdListView_->setPlainText(loadFromFile(BATCH_COMMAND_FILE_PATH));
     sendAllBtn_ = new QPushButton(tr("Send All"), this);
     sendAllBtn_->setMaximumWidth(100);
+    batchProc_ = new BatchProcessor(this);
 
     // Add label, editor and button to the quick panel
     QGroupBox *batchGroupBox = new QGroupBox(tr("Batch Commands"), this);
@@ -360,47 +361,48 @@ void MainWindow::setupUi()
     connect(searchLine_, &QLineEdit::returnPressed, this, &MainWindow::onSearchReturnPressed);
     connect(timer_, &QTimer::timeout, this, &MainWindow::timerHandler);
 
+    // TODO: Use for loop with group1Btns, group2Btns to reduce LoC
     // Quick button behavior: if a button has its "command" property set to a
     // non-empty string, set that into commandLine_ and send it when clicked.
     connect(quickBtn1_, &QPushButton::clicked, this, [this]() {
         QString cmd = quickBtn1_->property("command").toString();
-        if (!cmd.isEmpty()) { commandLine_->setText(cmd); sendCommand(); }
+        setTextAndSendCommand(cmd);
     });
     connect(quickBtn2_, &QPushButton::clicked, this, [this]() {
         QString cmd = quickBtn2_->property("command").toString();
-        if (!cmd.isEmpty()) { commandLine_->setText(cmd); sendCommand(); }
+        setTextAndSendCommand(cmd);
     });
     connect(quickBtn3_, &QPushButton::clicked, this, [this]() {
         QString cmd = quickBtn3_->property("command").toString();
-        if (!cmd.isEmpty()) { commandLine_->setText(cmd); sendCommand(); }
+        setTextAndSendCommand(cmd);
     });
     connect(quickBtn4_, &QPushButton::clicked, this, [this]() {
         QString cmd = quickBtn4_->property("command").toString();
-        if (!cmd.isEmpty()) { commandLine_->setText(cmd); sendCommand(); }
+        setTextAndSendCommand(cmd);
     });
     connect(quickBtn5_, &QPushButton::clicked, this, [this]() {
         QString cmd = quickBtn5_->property("command").toString();
-        if (!cmd.isEmpty()) { commandLine_->setText(cmd); sendCommand(); }
+        setTextAndSendCommand(cmd);
     });
     connect(quickBtn6_, &QPushButton::clicked, this, [this]() {
         QString cmd = quickBtn6_->property("command").toString();
-        if (!cmd.isEmpty()) { commandLine_->setText(cmd); sendCommand(); }
+        setTextAndSendCommand(cmd);
     });
     connect(quickBtn7_, &QPushButton::clicked, this, [this]() {
         QString cmd = quickBtn7_->property("command").toString();
-        if (!cmd.isEmpty()) { commandLine_->setText(cmd); sendCommand(); }
+        setTextAndSendCommand(cmd);
     });
     connect(quickBtn8_, &QPushButton::clicked, this, [this]() {
         QString cmd = quickBtn8_->property("command").toString();
-        if (!cmd.isEmpty()) { commandLine_->setText(cmd); sendCommand(); }
+        setTextAndSendCommand(cmd);
     });
     connect(quickBtn9_, &QPushButton::clicked, this, [this]() {
         QString cmd = quickBtn9_->property("command").toString();
-        if (!cmd.isEmpty()) { commandLine_->setText(cmd); sendCommand(); }
+        setTextAndSendCommand(cmd);
     });
     connect(quickBtn10_, &QPushButton::clicked, this, [this]() {
         QString cmd = quickBtn10_->property("command").toString();
-        if (!cmd.isEmpty()) { commandLine_->setText(cmd); sendCommand(); }
+        setTextAndSendCommand(cmd);
     });
 
     // Edit handlers: when the inline editor finishes editing, store the
@@ -479,6 +481,8 @@ void MainWindow::setupUi()
 
     // Connect batch-send button
     connect(sendAllBtn_, &QPushButton::clicked, this, &MainWindow::sendAllCommands);
+    connect(batchProc_, &BatchProcessor::sendBatchLineCmd, this, &MainWindow::setTextAndSendCommand);
+    connect(batchProc_, &BatchProcessor::sendLog, this, &MainWindow::log);
 
     // Keyboard shortcuts for search navigation: F3 = next, Shift+F3 = previous
     QShortcut *next = new QShortcut(QKeySequence("F3"), this);

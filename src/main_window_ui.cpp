@@ -301,11 +301,29 @@ void MainWindow::setupUi()
     cmdListView_->setPlainText(loadFromFile(BATCH_COMMAND_FILE_PATH));
     sendAllBtn_ = new QPushButton(tr("Send All"), this);
     sendAllBtn_->setMaximumWidth(100);
+
     // Add label, editor and button to the quick panel
-    quickLayout->addWidget(batchLabel);
-    quickLayout->addWidget(cmdListView_);
-    quickLayout->addWidget(sendAllBtn_);
-    quickLayout->addStretch(1);
+    QGroupBox *batchGroupBox = new QGroupBox(tr("Batch Commands"), this);
+    QVBoxLayout *batchLayout = new QVBoxLayout(batchGroupBox);
+    batchLayout->setContentsMargins(8, 8, 8, 8);
+    batchLayout->setSpacing(4);
+
+    // Create a row for the Send All button to align it to the left
+    QWidget *batchRow = new QWidget(this);
+    QHBoxLayout *batchRowLayout = new QHBoxLayout(batchRow);
+    batchRowLayout->setContentsMargins(0, 0, 0, 0);
+    batchRowLayout->setSpacing(2);
+    batchRowLayout->addWidget(sendAllBtn_, /*stretch=*/0);
+    batchRowLayout->addStretch(/*stretch=*/1); // Push button to the left
+
+    // Add label, text edit, and button row to the batch layout
+    batchLayout->addWidget(cmdListView_);
+    batchLayout->addWidget(batchRow);
+
+    // Add the batch group box to the quick layout
+    quickLayout->addWidget(batchGroupBox);
+    quickLayout->addStretch(1); // Push everything to the top
+
     // Add widgets to the splitter and set reasonable initial sizes
     split->addWidget(logView_);
     split->addWidget(quickContainer);

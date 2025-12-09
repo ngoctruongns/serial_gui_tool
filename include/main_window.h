@@ -144,6 +144,14 @@ private:
     QPlainTextEdit *cmdListView_;
     QPushButton *sendAllBtn_;
     BatchProcessor *batchProc_;
+    
+    // Knob sub command GUI
+    QPushButton *startBtn_;
+    QPushButton *powerBtn_;
+    QPushButton *ccwBtn_;
+    QPushButton *cwBtn_;
+    QPushButton *unlockBtn_;
+    QPushButton *langBtn_;
 
     // Basic UI elements for serial port configuration and control
     QPushButton *searchUpBtn_;

@@ -320,8 +320,50 @@ void MainWindow::setupUi()
     batchLayout->addWidget(cmdListView_);
     batchLayout->addWidget(batchRow);
 
+    // Knob panel GUI
+    QGroupBox *knobGroupBox = new QGroupBox(tr("Knob Panel"), this);
+    QHBoxLayout *knobLayout = new QHBoxLayout(knobGroupBox);
+    knobLayout->setContentsMargins(8, 8, 8, 8);
+    knobLayout->setSpacing(4);
+
+    // Create a row for Power/Start key
+    unlockBtn_ = new QPushButton(tr("UNLOCK"), this);
+    langBtn_ = new QPushButton(tr("LANGUAGE"), this);
+    startBtn_ = new QPushButton(tr("START"), this);
+    powerBtn_ = new QPushButton(tr("POWER"), this);
+    ccwBtn_ = new QPushButton(tr("CCW"), this);
+    cwBtn_ = new QPushButton(tr("CW"), this);
+
+    QWidget *keyCol = new QWidget(this);
+    QVBoxLayout *keyColLayout = new QVBoxLayout(keyCol);
+    keyColLayout->setContentsMargins(0, 0, 0, 0);
+    keyColLayout->setSpacing(8);
+    keyColLayout->addWidget(powerBtn_, /*stretch=*/0);
+    keyColLayout->addWidget(startBtn_, /*stretch=*/0);
+    
+    QWidget *utilsCol = new QWidget(this);
+    QVBoxLayout *utilsColLayout = new QVBoxLayout(utilsCol);
+    utilsColLayout->setContentsMargins(0, 0, 0, 0);
+    utilsColLayout->setSpacing(8);
+    utilsColLayout->addWidget(unlockBtn_, /*stretch=*/0);
+    utilsColLayout->addWidget(langBtn_, /*stretch=*/0);
+    // utilsColLayout->addStretch(/*stretch=*/1);
+
+    QWidget *knobCol = new QWidget(this);
+    QVBoxLayout *knobColLayout = new QVBoxLayout(knobCol);
+    knobColLayout->setContentsMargins(0, 0, 0, 0);
+    knobColLayout->setSpacing(8);
+    knobColLayout->addWidget(ccwBtn_, /*stretch=*/0);
+    knobColLayout->addWidget(cwBtn_, /*stretch=*/0);
+    
+    // Add label, text edit, and button row to the batch layout
+    knobLayout->addWidget(knobCol);
+    knobLayout->addWidget(utilsCol);
+    knobLayout->addWidget(keyCol);
+
     // Add the batch group box to the quick layout
     quickLayout->addWidget(batchGroupBox);
+    quickLayout->addWidget(knobGroupBox);
     quickLayout->addStretch(1); // Push everything to the top
 
     // Add widgets to the splitter and set reasonable initial sizes
@@ -482,6 +524,17 @@ void MainWindow::setupUi()
     connect(sendAllBtn_, &QPushButton::clicked, this, &MainWindow::sendAllCommands);
     connect(batchProc_, &BatchProcessor::sendBatchLineCmd, this, &MainWindow::setTextAndSendCommand);
     connect(batchProc_, &BatchProcessor::sendLog, this, &MainWindow::log);
+
+    // Connect Knob command button
+    connect(ccwBtn_, &QPushButton::clicked, this, [this]() { setTextAndSendCommand("input key 19"); });
+    connect(cwBtn_, &QPushButton::clicked, this, [this]() { setTextAndSendCommand("input key 20"); });
+    connect(unlockBtn_, &QPushButton::clicked, this, [this]() { setTextAndSendCommand("@lupa123"); });
+    connect(startBtn_, &QPushButton::clicked, this,
+            [this]() { setTextAndSendCommand("settings set volatile.sh.knob \"key S\""); });
+    connect(powerBtn_, &QPushButton::clicked, this,
+            [this]() { setTextAndSendCommand("settings set volatile.sh.knob \"key P\""); });
+    connect(langBtn_, &QPushButton::clicked, this,
+            [this]() { setTextAndSendCommand("settings set rw.ev.locale en-GB"); });
 
     // Keyboard shortcuts for search navigation: F3 = next, Shift+F3 = previous
     QShortcut *next = new QShortcut(QKeySequence("F3"), this);

@@ -144,7 +144,7 @@ private:
     QPlainTextEdit *cmdListView_;
     QPushButton *sendAllBtn_;
     BatchProcessor *batchProc_;
-    
+
     // Knob sub command GUI
     QPushButton *startBtn_;
     QPushButton *powerBtn_;
@@ -162,7 +162,7 @@ private:
     QCheckBox *autoScrollCheck_;
     QCheckBox *logReadOnlyCheck_;
     QByteArray buffer_;
-    QCompleter *completer_;
+    QStringListModel* completerModel_;
     QCompleter *commandCompleter_;
     QTimer *timer_;
 

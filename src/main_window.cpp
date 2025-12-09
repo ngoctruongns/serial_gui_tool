@@ -380,6 +380,7 @@ void MainWindow::log(const QString &msg)
         highlightSearchResults(searchLine_->text());
         updateSearchMatches(searchLine_->text());
         updateSearchCountLabel();
+        updateCompleter();
     }
 }
 
@@ -517,13 +518,7 @@ void MainWindow::updateCompleter()
     QStringList words = allText.split(QRegExp("\\W+"), Qt::SkipEmptyParts);
     words.removeDuplicates();
 
-    QCompleter *completer = new QCompleter(words, this);
-    completer->setCaseSensitivity(Qt::CaseInsensitive);
-    completer->setCompletionMode(QCompleter::PopupCompletion);
-    searchLine_->setCompleter(completer);
-
-    // Also update highlights for current search term
-    highlightSearchResults(searchLine_->text());
+    completerModel_->setStringList(words);
 }
 
 void MainWindow::highlightSearchResults(const QString &term)
@@ -556,6 +551,9 @@ void MainWindow::highlightSearchResults(const QString &term)
 
 void MainWindow::updateSearchMatches(const QString &term)
 {
+    // Also update highlights for current search term
+    highlightSearchResults(searchLine_->text());
+
     // Find all matches and update the list
     searchMatches_.clear();
     currentSearchIndex_ = -1;
@@ -761,7 +759,7 @@ QString MainWindow::loadFromFile(QString fPath)
     QFile file(filePath);
 
     if (!file.exists()) {
-        return QString(); 
+        return QString();
     }
 
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {

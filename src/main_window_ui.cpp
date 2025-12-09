@@ -128,9 +128,10 @@ void MainWindow::setupUi()
     QSplitter *split = new QSplitter(Qt::Horizontal, this);
     split->setContentsMargins(0, 0, 0, 0);
 
-    QStringList historyList = {"Error", "RX:", "Variable_1"};
-    completer_ = new QCompleter(historyList, this);
+    completerModel_ = new QStringListModel(this);
+    QCompleter * completer_ = new QCompleter(completerModel_, this);
     completer_->setCaseSensitivity(Qt::CaseInsensitive);
+    completer_->setFilterMode(Qt::MatchContains);
     completer_->setCompletionMode(QCompleter::PopupCompletion);
 
     searchLine_ = new QLineEdit(this);
@@ -140,6 +141,7 @@ void MainWindow::setupUi()
     searchCountLabel_ = new QLabel(this);
     searchCountLabel_->setText("");
     searchCountLabel_->setFixedWidth(60);
+    searchCountLabel_->setAlignment(Qt::AlignRight);
 
     searchUpBtn_ = new QPushButton(tr("Up"));
     searchUpBtn_->setMinimumWidth(60);
@@ -154,7 +156,7 @@ void MainWindow::setupUi()
     logReadOnlyCheck_->setChecked(true);
     logReadOnlyCheck_->setToolTip(tr("Set read only mode for log view"));
 
-    /****************  Create log container  ***********/ 
+    /****************  Create log container  ***********/
     QWidget *logContainer = new QWidget(this);
     QVBoxLayout *logLayout = new QVBoxLayout(logContainer);
     logLayout->setContentsMargins(5, 5, 5, 5);
@@ -185,7 +187,7 @@ void MainWindow::setupUi()
     serialConfigRow->addWidget(openBtn_);
     serialConfigRow->addWidget(closeBtn_);
     serialConfigRow->addStretch(/*stretch=*/1);
-    
+
     // Serial send command row layout
     QWidget *serialCmd = new QWidget(this);
     QHBoxLayout *serialCmdRow = new QHBoxLayout(serialCmd);
@@ -306,7 +308,7 @@ void MainWindow::setupUi()
 
     quickLayout->addWidget(quickGroup1Box_);
     quickLayout->addWidget(quickGroup2Box_);
-    
+
     // Batch command area: multi-line edit and Send All button placed under Group 2
     cmdListView_ = new QPlainTextEdit(this);
     cmdListView_->setPlaceholderText(tr("Enter one command per line"));
@@ -355,7 +357,7 @@ void MainWindow::setupUi()
     keyColLayout->setSpacing(8);
     keyColLayout->addWidget(powerBtn_, /*stretch=*/0);
     keyColLayout->addWidget(startBtn_, /*stretch=*/0);
-    
+
     QWidget *utilsCol = new QWidget(this);
     QVBoxLayout *utilsColLayout = new QVBoxLayout(utilsCol);
     utilsColLayout->setContentsMargins(0, 0, 0, 0);
@@ -370,7 +372,7 @@ void MainWindow::setupUi()
     knobColLayout->setSpacing(8);
     knobColLayout->addWidget(ccwBtn_, /*stretch=*/0);
     knobColLayout->addWidget(cwBtn_, /*stretch=*/0);
-    
+
     // Add label, text edit, and button row to the batch layout
     knobLayout->addWidget(knobCol);
     knobLayout->addWidget(utilsCol);
@@ -410,10 +412,7 @@ void MainWindow::setupUi()
         this->log("======================================================\n\n\n");
     });
     connect(commandLine_, &QLineEdit::returnPressed, this, &MainWindow::sendCommand);
-    connect(searchLine_, &QLineEdit::textChanged, this, &MainWindow::updateCompleter);
     connect(searchLine_, &QLineEdit::textChanged, this, &MainWindow::updateSearchMatches);
-    // When user presses Enter in the search box: first Enter jumps to first match,
-    // later Enters act like "search down" (next match)
     connect(searchLine_, &QLineEdit::returnPressed, this, &MainWindow::onSearchReturnPressed);
     connect(timer_, &QTimer::timeout, this, &MainWindow::timerHandler);
 

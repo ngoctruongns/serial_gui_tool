@@ -38,33 +38,15 @@ void MainWindow::setupUi()
     sendBtn_ = new QPushButton(tr("Send"));
     cmdLoadBtn_ = new QPushButton(tr("Load"));
     cmdLoadBtn_->setMaximumWidth(50);
-    searchUpBtn_ = new QPushButton(tr("Up"));
-    searchUpBtn_->setMaximumWidth(40);
-    searchDownBtn_ = new QPushButton(tr("Dn"));
-    searchDownBtn_->setMaximumWidth(40);
-    clearBtn_ = new QPushButton(tr("Clear All"));
     commandLine_ = new CommandLineEdit(this);
-    searchLine_ = new QLineEdit(this);
-    searchCountLabel_ = new QLabel(this);
-    searchCountLabel_->setText("");
-    searchCountLabel_->setMaximumWidth(60);
+
     logView_ = new QPlainTextEdit(this);
     logView_->setReadOnly(true);
     logView_->setStyleSheet(QString("font-size: %1px;").arg(logFontSize_));
-    // logView_->setStyleSheet("background-color: black; color: white;");
-    // QFont font = logView_->font();
-    // font.setPointSize(13);
-    // logView_->setFont(font);
+
     hexCheck_ = new QCheckBox(tr("HEX"));
     sendHex_ = new QCheckBox(tr("HEX"), this);
     sendHex_->setToolTip(tr("Send data as hex instead of UTF-8"));
-    autoScrollCheck_ = new QCheckBox(tr("Auto Scroll"), this);
-    autoScrollCheck_->setChecked(true);
-    autoScrollCheck_->setToolTip(tr("Automatically scroll to the end when new data arrives"));
-
-    logReadOnlyCheck_ = new QCheckBox(tr("Read Only"), this);
-    logReadOnlyCheck_->setChecked(true);
-    logReadOnlyCheck_->setToolTip(tr("Set read only mode for log view"));
 
     // Quick-send buttons (user-assignable). They will be shown to the
     // right of the log view in two groups (0-4 and 5-9).
@@ -89,7 +71,6 @@ void MainWindow::setupUi()
     }
 
     commandLine_->setPlaceholderText("Command input here...");
-    searchLine_->setPlaceholderText("Search string input here...");
 
     // Load quick commands from cmd/quick_command.txt if present.
     {
@@ -132,12 +113,6 @@ void MainWindow::setupUi()
         }
     }
 
-    QStringList historyList = {"Error", "RX:", "Variable_1"};
-    completer_ = new QCompleter(historyList, this);
-    completer_->setCaseSensitivity(Qt::CaseInsensitive);
-    completer_->setCompletionMode(QCompleter::PopupCompletion);
-    searchLine_->setCompleter(completer_);
-
     timer_ = new QTimer(this);
     timer_->setInterval(1000); // 1 second interval
 
@@ -147,69 +122,108 @@ void MainWindow::setupUi()
         baudCombo_->addItem(QString::number(b), b);
     baudCombo_->setCurrentText("115200");
 
-    QHBoxLayout *h1 = new QHBoxLayout();
-    h1->setSpacing(5);
-    h1->setContentsMargins(5, 5, 5, 5);
-
-    QLabel *portLabel = new QLabel(tr("Port:"));
-    h1->addWidget(portLabel);
-    portLabel->setMinimumWidth(30);
-    portLabel->setMaximumWidth(50);
-
-    h1->addWidget(portCombo_);
-    h1->addWidget(loadBtn_);
-    h1->addSpacing(20); // Add small space between port and baud
-
-    QLabel *baudLabel = new QLabel(tr("Baud:"));
-    h1->addWidget(baudLabel);
-    baudLabel->setMinimumWidth(30);
-    baudLabel->setMaximumWidth(50);
-
-    h1->addWidget(baudCombo_);
-    h1->addSpacing(10);
-    h1->addWidget(hexCheck_);
-    h1->addWidget(autoScrollCheck_);
-    h1->addWidget(logReadOnlyCheck_);
-    h1->addWidget(spaceBtn_);
-    h1->addWidget(openBtn_);
-    h1->addWidget(closeBtn_);
-
-    QGridLayout *g = new QGridLayout;
-    g->addWidget(commandLine_, 0, 0);
-    g->addWidget(sendHex_, 0, 1);
-
-    // Put Load and Send buttons into a compact container
-    QWidget *cmdContainer = new QWidget(this);
-    QHBoxLayout *cmdLayout = new QHBoxLayout(cmdContainer);
-    cmdLayout->setContentsMargins(0, 0, 0, 0);
-    cmdLayout->setSpacing(2);
-    cmdLayout->addWidget(cmdLoadBtn_);
-    cmdLayout->addWidget(sendBtn_);
-    g->addWidget(cmdContainer, 0, 2);
-
-    // Put search controls into a compact layout: searchLine + Up/Down buttons + count label
-    QWidget *searchContainer = new QWidget(this);
-    QHBoxLayout *searchLayout = new QHBoxLayout(searchContainer);
-    searchLayout->setContentsMargins(0, 0, 0, 0);
-    searchLayout->setSpacing(2);
-    searchLayout->addWidget(searchLine_, /*stretch=*/1);  // Let searchLine_ expand
-    searchLayout->addWidget(searchUpBtn_, /*stretch=*/0);
-    searchLayout->addWidget(searchDownBtn_, /*stretch=*/0);
-    searchLayout->addWidget(searchCountLabel_, /*stretch=*/0);
-
-    g->addWidget(searchContainer, 1, 0, 1, 2);  // Span across column 0 and 1
-    g->addWidget(clearBtn_, 1, 2);
-
-    vbox->addLayout(h1);
-    vbox->addLayout(g);
-
     // Main area: use a QSplitter so user can resize between log view and
     // the quick-send panel. This lets the command editors and batch area
     // expand when the user drags the splitter.
     QSplitter *split = new QSplitter(Qt::Horizontal, this);
     split->setContentsMargins(0, 0, 0, 0);
 
-    // Let logView_ expand to take most space by default (splitter sizes set later)
+    QStringList historyList = {"Error", "RX:", "Variable_1"};
+    completer_ = new QCompleter(historyList, this);
+    completer_->setCaseSensitivity(Qt::CaseInsensitive);
+    completer_->setCompletionMode(QCompleter::PopupCompletion);
+
+    searchLine_ = new QLineEdit(this);
+    searchLine_->setCompleter(completer_);
+    searchLine_->setPlaceholderText("Search string input here...");
+
+    searchCountLabel_ = new QLabel(this);
+    searchCountLabel_->setText("");
+    searchCountLabel_->setFixedWidth(60);
+
+    searchUpBtn_ = new QPushButton(tr("Up"));
+    searchUpBtn_->setMinimumWidth(60);
+    searchDownBtn_ = new QPushButton(tr("Dn"));
+    searchDownBtn_->setMinimumWidth(60);
+    clearBtn_ = new QPushButton(tr("Clear All"));
+
+    autoScrollCheck_ = new QCheckBox(tr("Auto Scroll"), this);
+    autoScrollCheck_->setChecked(true);
+    autoScrollCheck_->setToolTip(tr("Automatically scroll to the end when new data arrives"));
+    logReadOnlyCheck_ = new QCheckBox(tr("Read Only"), this);
+    logReadOnlyCheck_->setChecked(true);
+    logReadOnlyCheck_->setToolTip(tr("Set read only mode for log view"));
+
+    /****************  Create log container  ***********/ 
+    QWidget *logContainer = new QWidget(this);
+    QVBoxLayout *logLayout = new QVBoxLayout(logContainer);
+    logLayout->setContentsMargins(5, 5, 5, 5);
+    logLayout->setSpacing(8);
+
+    // Serial config port row layout
+    QWidget *serialConfig = new QWidget(this);
+    QHBoxLayout *serialConfigRow = new QHBoxLayout(serialConfig);
+    serialConfigRow->setContentsMargins(0, 0, 0, 0);
+
+    QLabel *portLabel = new QLabel(tr("Port:"));
+    serialConfigRow->addWidget(portLabel);
+    portLabel->setMinimumWidth(30);
+    portLabel->setMaximumWidth(50);
+
+    serialConfigRow->addWidget(portCombo_);
+    serialConfigRow->addWidget(loadBtn_);
+    serialConfigRow->addSpacing(20); // Add small space between port and baud
+
+    QLabel *baudLabel = new QLabel(tr("Baud:"));
+    serialConfigRow->addWidget(baudLabel);
+    baudLabel->setMinimumWidth(30);
+    baudLabel->setMaximumWidth(50);
+
+    serialConfigRow->addWidget(baudCombo_);
+    serialConfigRow->addSpacing(10);
+    serialConfigRow->addWidget(hexCheck_);
+    serialConfigRow->addWidget(openBtn_);
+    serialConfigRow->addWidget(closeBtn_);
+    serialConfigRow->addStretch(/*stretch=*/1);
+    
+    // Serial send command row layout
+    QWidget *serialCmd = new QWidget(this);
+    QHBoxLayout *serialCmdRow = new QHBoxLayout(serialCmd);
+    serialCmdRow->setContentsMargins(0, 0, 0, 0);
+    serialCmdRow->addWidget(commandLine_);
+    serialCmdRow->addWidget(sendHex_);
+    serialCmdRow->addWidget(cmdLoadBtn_);
+    serialCmdRow->addWidget(sendBtn_);
+
+    // Log search row searchLine + Up/Down buttons + count label
+    QWidget *searchContainer = new QWidget(this);
+    QHBoxLayout *searchLayout = new QHBoxLayout(searchContainer);
+    searchLayout->setContentsMargins(0, 0, 0, 0);
+    searchLayout->setSpacing(2);
+    searchLayout->addWidget(searchLine_, /*stretch=*/0);  // Let searchLine_ expand
+    searchLayout->addWidget(searchCountLabel_, /*stretch=*/0);
+    // searchLayout->addStretch(/*stretch=*/1);
+
+    // Log command row
+    QWidget *logCmdRow = new QWidget(this);
+    QHBoxLayout *cmdRowLayout = new QHBoxLayout(logCmdRow);
+    cmdRowLayout->setContentsMargins(0, 0, 0, 0);
+    cmdRowLayout->setSpacing(8);
+    cmdRowLayout->addWidget(autoScrollCheck_);
+    cmdRowLayout->addWidget(logReadOnlyCheck_);
+    cmdRowLayout->addWidget(spaceBtn_);
+    cmdRowLayout->addWidget(clearBtn_);
+    cmdRowLayout->addStretch(/*stretch=*/1);
+    cmdRowLayout->addWidget(searchUpBtn_);
+    cmdRowLayout->addWidget(searchDownBtn_);
+
+    // Add layout for log view column
+    logLayout->addWidget(serialConfig);
+    logLayout->addWidget(serialCmd);
+    logLayout->addWidget(searchContainer);
+    logLayout->addWidget(logCmdRow);
+    logLayout->addWidget(logView_);
+
     // Create quick panel container
     QWidget *quickContainer = new QWidget(this);
     QVBoxLayout *quickLayout = new QVBoxLayout(quickContainer);
@@ -219,7 +233,8 @@ void MainWindow::setupUi()
     // Create two groups: Group 1 (buttons 0-4) and Group 2 (buttons 5-9)
     // Helper to create a group with border and label - buttons arranged vertically
     // `editWidgets` can be any QWidget (we use `CommandLineEdit` instances)
-    auto createQuickGroup = [this](const QString &title, QPushButton **btns, QWidget **editWidgets, int count) -> QGroupBox* {
+    auto createQuickGroup = [this](const QString &title, QPushButton **btns, QWidget **editWidgets,
+                                   int count) -> QGroupBox * {
         QGroupBox *groupBox = new QGroupBox(title, this);
         QVBoxLayout *groupLayout = new QVBoxLayout(groupBox);
         groupLayout->setContentsMargins(8, 8, 8, 8);
@@ -367,7 +382,7 @@ void MainWindow::setupUi()
     quickLayout->addStretch(1); // Push everything to the top
 
     // Add widgets to the splitter and set reasonable initial sizes
-    split->addWidget(logView_);
+    split->addWidget(logContainer);
     split->addWidget(quickContainer);
     // Prefer log view to take most space initially
     split->setSizes({1000, 360});

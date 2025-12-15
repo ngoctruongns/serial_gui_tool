@@ -345,7 +345,7 @@ void MainWindow::setupUi()
 
     // Create a row for Power/Start key
     unlockBtn_ = new QPushButton(tr("UNLOCK"), this);
-    langBtn_ = new QPushButton(tr("LANGUAGE"), this);
+    wifiBtn_ = new QPushButton(tr("WIFI"), this);
     startBtn_ = new QPushButton(tr("START"), this);
     powerBtn_ = new QPushButton(tr("POWER"), this);
     ccwBtn_ = new QPushButton(tr("CCW"), this);
@@ -363,7 +363,7 @@ void MainWindow::setupUi()
     utilsColLayout->setContentsMargins(0, 0, 0, 0);
     utilsColLayout->setSpacing(8);
     utilsColLayout->addWidget(unlockBtn_, /*stretch=*/0);
-    utilsColLayout->addWidget(langBtn_, /*stretch=*/0);
+    utilsColLayout->addWidget(wifiBtn_, /*stretch=*/0);
     // utilsColLayout->addStretch(/*stretch=*/1);
 
     QWidget *knobCol = new QWidget(this);
@@ -540,15 +540,15 @@ void MainWindow::setupUi()
     connect(batchProc_, &BatchProcessor::sendLog, this, &MainWindow::log);
 
     // Connect Knob command button
-    connect(ccwBtn_, &QPushButton::clicked, this, [this]() { setTextAndSendCommand("input key 19"); });
-    connect(cwBtn_, &QPushButton::clicked, this, [this]() { setTextAndSendCommand("input key 20"); });
+    connect(ccwBtn_, &QPushButton::clicked, this, [this]() { setTextAndSendCommand("input key 20"); });
+    connect(cwBtn_, &QPushButton::clicked, this, [this]() { setTextAndSendCommand("input key 19"); });
     connect(unlockBtn_, &QPushButton::clicked, this, [this]() { setTextAndSendCommand("@lupa123"); });
     connect(startBtn_, &QPushButton::clicked, this,
             [this]() { setTextAndSendCommand("settings set volatile.sh.knob \"key S\""); });
     connect(powerBtn_, &QPushButton::clicked, this,
             [this]() { setTextAndSendCommand("settings set volatile.sh.knob \"key P\""); });
-    connect(langBtn_, &QPushButton::clicked, this,
-            [this]() { setTextAndSendCommand("settings set rw.ev.locale en-GB"); });
+    connect(wifiBtn_, &QPushButton::clicked, this,
+            [this]() { setTextAndSendCommand("settings set volatile.sh.modem \"wifi_setting_mode 1\""); });
 
     // Keyboard shortcuts for search navigation: F3 = next, Shift+F3 = previous
     QShortcut *next = new QShortcut(QKeySequence("F3"), this);

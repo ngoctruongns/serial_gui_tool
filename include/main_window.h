@@ -151,7 +151,7 @@ private:
     QPushButton *ccwBtn_;
     QPushButton *cwBtn_;
     QPushButton *unlockBtn_;
-    QPushButton *langBtn_;
+    QPushButton *wifiBtn_;
 
     // Basic UI elements for serial port configuration and control
     QPushButton *searchUpBtn_;

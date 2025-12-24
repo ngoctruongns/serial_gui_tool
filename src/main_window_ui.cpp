@@ -540,8 +540,10 @@ void MainWindow::setupUi()
     connect(batchProc_, &BatchProcessor::sendLog, this, &MainWindow::log);
 
     // Connect Knob command button
-    connect(ccwBtn_, &QPushButton::clicked, this, [this]() { setTextAndSendCommand("input key 20"); });
-    connect(cwBtn_, &QPushButton::clicked, this, [this]() { setTextAndSendCommand("input key 19"); });
+    connect(ccwBtn_, &QPushButton::clicked, this,
+            [this]() { setTextAndSendCommand("settings set volatile.sh.knob \"key L\""); });
+    connect(cwBtn_, &QPushButton::clicked, this,
+            [this]() { setTextAndSendCommand("settings set volatile.sh.knob \"key R\""); });
     connect(unlockBtn_, &QPushButton::clicked, this, [this]() { setTextAndSendCommand("@lupa123"); });
     connect(startBtn_, &QPushButton::clicked, this,
             [this]() { setTextAndSendCommand("settings set volatile.sh.knob \"key S\""); });

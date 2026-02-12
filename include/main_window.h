@@ -23,6 +23,7 @@ class QTimer;
 class QPushButton;
 class QComboBox;
 class QDialog;
+class QTcpSocket ;
 
 // Custom QLineEdit with arrow key support for command history
 class CommandLineEdit : public QLineEdit
@@ -57,6 +58,7 @@ private slots:
     void sendCommand();
     void setTextAndSendCommand(const QString &cmd);
     void onDataReceived(const QByteArray &data);
+    void readSocketData(void);
     void onError(const QString &msg);
     void searchLog();
     void searchUp();
@@ -69,10 +71,12 @@ private slots:
     void clearLogs();
     void loadCommands();
     void sendAllCommands();
+    void updateFilters();
 
 private:
     void updatePortList();
     void log(const QString &msg);
+    void displayToLogView(const QString &msg);
     void onDataPlotter(const QString &line);
     void clearLog();
     void updateCompleter();
@@ -100,10 +104,17 @@ private:
     bool initFlag_;
     SerialWorker *worker_;
     QPlainTextEdit *logView_;
+    QComboBox *deviceCombo_;
     QComboBox *portCombo_;
     QComboBox *baudCombo_;
     CommandLineEdit *commandLine_;
+    QLineEdit *remoteIpLine_;
     QLineEdit *searchLine_;
+    QTcpSocket *socket_;
+    QString logBuffer_;
+    QStringList filterKeywords_;
+    QPlainTextEdit *filterEditor_;
+
     QLabel *searchCountLabel_;     // Label to show "x/y" search count
     QPushButton *loadBtn_;
     QPushButton *spaceBtn_;

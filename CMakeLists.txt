@@ -15,7 +15,7 @@ if (WIN32)
     set(CMAKE_LINKER_FLAGS "")
 endif()
 
-find_package(Qt5 REQUIRED COMPONENTS Widgets SerialPort Charts)
+find_package(Qt5 REQUIRED COMPONENTS Widgets SerialPort Charts Network)
 
 include_directories(include)
 
@@ -32,6 +32,7 @@ target_link_libraries(${PROJECT_NAME}
     Qt5::Widgets
     Qt5::SerialPort
     Qt5::Charts
+    Qt5::Network
 )
 
 if (WIN32)

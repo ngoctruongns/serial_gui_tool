@@ -30,6 +30,7 @@ void MainWindow::setupUi()
 
     // Create UI elements
     portCombo_ = new QComboBox(this);
+    deviceCombo_ = new QComboBox();
     baudCombo_ = new QComboBox();
     loadBtn_ = new QPushButton(tr("Find Port"));
     openBtn_ = new QPushButton(tr("Open"));
@@ -121,6 +122,13 @@ void MainWindow::setupUi()
     for (int b : baudRates)
         baudCombo_->addItem(QString::number(b), b);
     baudCombo_->setCurrentText("115200");
+    
+    deviceCombo_->addItem("Local");
+    deviceCombo_->addItem("Remote");
+    deviceCombo_->setCurrentText("Local");
+
+    remoteIpLine_ = new QLineEdit(this);
+    remoteIpLine_->setPlaceholderText("Enter Remote IP...");
 
     // Main area: use a QSplitter so user can resize between log view and
     // the quick-send panel. This lets the command editors and batch area
@@ -167,6 +175,10 @@ void MainWindow::setupUi()
     QHBoxLayout *serialConfigRow = new QHBoxLayout(serialConfig);
     serialConfigRow->setContentsMargins(0, 0, 0, 0);
 
+    // Select local port or remote port
+    serialConfigRow->addWidget(deviceCombo_);
+    serialConfigRow->addWidget(remoteIpLine_);
+
     QLabel *portLabel = new QLabel(tr("Port:"));
     serialConfigRow->addWidget(portLabel);
     portLabel->setMinimumWidth(30);
@@ -182,8 +194,6 @@ void MainWindow::setupUi()
     baudLabel->setMaximumWidth(50);
 
     serialConfigRow->addWidget(baudCombo_);
-    serialConfigRow->addSpacing(10);
-    serialConfigRow->addWidget(hexCheck_);
     serialConfigRow->addWidget(openBtn_);
     serialConfigRow->addWidget(closeBtn_);
     serialConfigRow->addStretch(/*stretch=*/1);
@@ -215,6 +225,8 @@ void MainWindow::setupUi()
     cmdRowLayout->addWidget(logReadOnlyCheck_);
     cmdRowLayout->addWidget(spaceBtn_);
     cmdRowLayout->addWidget(clearBtn_);
+    cmdRowLayout->addSpacing(10);
+    cmdRowLayout->addWidget(hexCheck_);
     cmdRowLayout->addStretch(/*stretch=*/1);
     cmdRowLayout->addWidget(searchUpBtn_);
     cmdRowLayout->addWidget(searchDownBtn_);
@@ -337,7 +349,7 @@ void MainWindow::setupUi()
     batchLayout->addWidget(cmdListView_);
     batchLayout->addWidget(batchRow);
 
-    // Knob panel GUI
+    // --------------------- Knob panel GUI ------------------------
     QGroupBox *knobGroupBox = new QGroupBox(tr("Knob Panel"), this);
     QHBoxLayout *knobLayout = new QHBoxLayout(knobGroupBox);
     knobLayout->setContentsMargins(8, 8, 8, 8);
@@ -378,9 +390,22 @@ void MainWindow::setupUi()
     knobLayout->addWidget(utilsCol);
     knobLayout->addWidget(keyCol);
 
-    // Add the batch group box to the quick layout
+    // --------------------- Filter line with keywords  ------------------------
+    filterEditor_ = new QPlainTextEdit(this);
+    filterEditor_->setPlaceholderText(tr("Enter one filter keyword per line"));
+    filterEditor_->setMaximumHeight(100);
+
+    // Add label, editor filter panel
+    QGroupBox *filterGroupBox = new QGroupBox(tr("Filter Keywords"), this);
+    QVBoxLayout *filterLayout = new QVBoxLayout(filterGroupBox);
+    filterLayout->setContentsMargins(8, 8, 8, 8);
+    filterLayout->setSpacing(4);
+    filterLayout->addWidget(filterEditor_);
+
+    // ===============  Add the batch group box to the quick layout ================
     quickLayout->addWidget(batchGroupBox);
     quickLayout->addWidget(knobGroupBox);
+    quickLayout->addWidget(filterGroupBox);
     quickLayout->addStretch(1); // Push everything to the top
 
     // Add widgets to the splitter and set reasonable initial sizes
@@ -538,6 +563,9 @@ void MainWindow::setupUi()
     connect(sendAllBtn_, &QPushButton::clicked, this, &MainWindow::sendAllCommands);
     connect(batchProc_, &BatchProcessor::sendBatchLineCmd, this, &MainWindow::setTextAndSendCommand);
     connect(batchProc_, &BatchProcessor::sendLog, this, &MainWindow::log);
+
+    // Connect filter editor
+    connect(filterEditor_, &QPlainTextEdit::textChanged, this, &MainWindow::updateFilters);
 
     // Connect Knob command button
     connect(ccwBtn_, &QPushButton::clicked, this,

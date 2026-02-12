@@ -20,6 +20,7 @@
 #include <QDialog>
 #include <QPlainTextEdit>
 #include <QKeyEvent>
+#include <QTcpSocket>
 
 // Implementation of CommandLineEdit with arrow key support
 CommandLineEdit::CommandLineEdit(QWidget *parent)
@@ -141,6 +142,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     // Create worker AFTER UI is setup
     worker_ = new SerialWorker(this); // parent = this, no manual delete needed
 
+    // Create socket to connect with remote device
+    socket_ = new QTcpSocket(this);
+
     // Setup command completer from history
     updateCommandCompleter();
     connect(timer_, &QTimer::timeout, this, &MainWindow::timerHandler);
@@ -156,6 +160,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     connect(worker_, &SerialWorker::dataReceived, this, &MainWindow::onDataReceived);
     connect(worker_, &SerialWorker::errorOccurred, this, &MainWindow::onError);
 
+    // Socket signal
+    connect(socket_, &QTcpSocket::readyRead, this, &MainWindow::readSocketData);
+
     closeBtn_->setEnabled(false);
     updatePortList();
     initFlag_ = true;
@@ -168,8 +175,22 @@ MainWindow::~MainWindow()
 void MainWindow::updatePortList()
 {
     portCombo_->clear();
-    for (auto &info : QSerialPortInfo::availablePorts())
-        portCombo_->addItem(info.portName());
+    QString device = deviceCombo_->currentText();
+
+    if (device == "Local") {
+        for (auto &info : QSerialPortInfo::availablePorts())
+            portCombo_->addItem(info.portName());
+    } else {
+        // TODO: Check remote device IP
+        QString ipAddr = remoteIpLine_->text();
+        int portNum = 2026;
+        log("Find UART port in remote device IP: " + ipAddr);
+        if (socket_->state() == QAbstractSocket::UnconnectedState) {
+            // socket_->connectToHost(ipAddr, portNum);
+            socket_->connectToHost("10.218.142.12", 2026);
+            log("\nConnect to port number " + QString::number(portNum)); 
+        }
+    }
 }
 
 void MainWindow::openSerial()
@@ -207,6 +228,13 @@ void MainWindow::closeSerial()
 
 void MainWindow::sendCommand()
 {
+    if (socket_->isOpen()) {
+        QString data = commandLine_->text();
+        data.append(eolMode_);
+        socket_->write(data.toUtf8());
+        return;
+    }
+
     if (!worker_ || !worker_->isOpen()) {
         QMessageBox::warning(this, "Warning", "Serial port not open");
         return;
@@ -259,6 +287,12 @@ void MainWindow::setTextAndSendCommand(const QString &cmd)
         commandLine_->setText(cmd);
         sendCommand();
     }
+}
+
+void MainWindow::readSocketData(void)
+{
+    QByteArray data = socket_->readAll();
+    log(QString::fromUtf8(data));
 }
 
 void MainWindow::onDataReceived(const QByteArray &data)
@@ -338,7 +372,46 @@ void MainWindow::onError(const QString &msg)
     QMessageBox::critical(this, "Serial Error", msg);
 }
 
+void MainWindow::updateFilters()
+{
+    QString content = filterEditor_->toPlainText();
+    filterKeywords_ = content.split('\n', Qt::SkipEmptyParts);
+
+    // Remove white space in filter keywords
+    for (QString &keyword : filterKeywords_) {
+        keyword = keyword.trimmed();
+        qDebug() << keyword;
+    }
+}
+
 void MainWindow::log(const QString &msg)
+{
+    // Add msg to log buffer
+    logBuffer_.append(msg);
+
+    // Check \n in log buffer
+    while (logBuffer_.contains('\n')) {
+        // Get new line from log buffer
+        int newlineIndex = logBuffer_.indexOf('\n');
+        QString fullLine = logBuffer_.left(newlineIndex + 1);
+        logBuffer_.remove(0, newlineIndex + 1);
+
+        // Filtering new line
+        bool shouldFilter = false;
+        for (const QString &keyword : filterKeywords_) {
+            if (fullLine.contains(keyword, Qt::CaseInsensitive)) {
+                shouldFilter = true;
+                break;
+            }
+        }
+
+        if (!shouldFilter) {
+            displayToLogView(fullLine);
+        }
+    }
+}
+    
+void MainWindow::displayToLogView(const QString &text)
 {
     // Save current scroll bar position
     QScrollBar *vScrollBar = logView_->verticalScrollBar();
@@ -351,12 +424,12 @@ void MainWindow::log(const QString &msg)
     bool hasSelection = cursor.hasSelection();
     int selectionStart = cursor.selectionStart();
     int selectionEnd = cursor.selectionEnd();
-
+    
     // Always move cursor to end before inserting new text
     // This ensures new log entries are appended at the end, not at cursor position
     cursor.movePosition(QTextCursor::End);
     logView_->setTextCursor(cursor);
-    logView_->insertPlainText(msg);
+    logView_->insertPlainText(text);
 
     // Auto scroll to end only if auto-scroll is enabled
     if (autoScrollEnabled_) {

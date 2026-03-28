@@ -24,6 +24,8 @@ class QPushButton;
 class QComboBox;
 class QDialog;
 class QTcpSocket ;
+class QThread;
+class QGroupBox;
 
 // Custom QLineEdit with arrow key support for command history
 class CommandLineEdit : public QLineEdit
@@ -76,6 +78,12 @@ private slots:
 private:
     void updatePortList();
     void log(const QString &msg);
+    void flushLogBuffer(bool force = false);
+    void processPendingSerialData();
+    void scheduleSearchRefresh();
+    void scheduleCompleterRefresh();
+    void updateSplitLineMode(bool enabled);
+    bool isWorkerPortOpen();
     void displayToLogView(const QString &msg);
     void onDataPlotter(const QString &line);
     void clearLog();
@@ -172,10 +180,18 @@ private:
     QCheckBox *sendHex_;
     QCheckBox *autoScrollCheck_;
     QCheckBox *logReadOnlyCheck_;
+    QCheckBox *splitLineCheck_ = nullptr;
     QByteArray buffer_;
+    QByteArray pendingSerialData_;
     QStringListModel* completerModel_;
     QCompleter *commandCompleter_;
     QTimer *timer_;
+    QTimer *serialUiFlushTimer_ = nullptr;
+    QTimer *searchDebounceTimer_ = nullptr;
+    QTimer *completerDebounceTimer_ = nullptr;
+    QThread *workerThread_ = nullptr;
+    QGroupBox *filterGroupBox_ = nullptr;
+    bool workerPortOpen_ = false;
 
     PlotWindow* plotWindow_ = nullptr;
 

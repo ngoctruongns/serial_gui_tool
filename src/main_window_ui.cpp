@@ -122,7 +122,7 @@ void MainWindow::setupUi()
     for (int b : baudRates)
         baudCombo_->addItem(QString::number(b), b);
     baudCombo_->setCurrentText("115200");
-    
+
     deviceCombo_->addItem("Local");
     deviceCombo_->addItem("Remote");
     deviceCombo_->setCurrentText("Local");
@@ -163,6 +163,9 @@ void MainWindow::setupUi()
     logReadOnlyCheck_ = new QCheckBox(tr("Read Only"), this);
     logReadOnlyCheck_->setChecked(true);
     logReadOnlyCheck_->setToolTip(tr("Set read only mode for log view"));
+    splitLineCheck_ = new QCheckBox(tr("Split line"), this);
+    splitLineCheck_->setChecked(true);
+    splitLineCheck_->setToolTip(tr("If unchecked, show incoming chunks immediately without line buffering"));
 
     /****************  Create log container  ***********/
     QWidget *logContainer = new QWidget(this);
@@ -223,6 +226,7 @@ void MainWindow::setupUi()
     cmdRowLayout->setSpacing(8);
     cmdRowLayout->addWidget(autoScrollCheck_);
     cmdRowLayout->addWidget(logReadOnlyCheck_);
+    cmdRowLayout->addWidget(splitLineCheck_);
     cmdRowLayout->addWidget(spaceBtn_);
     cmdRowLayout->addWidget(clearBtn_);
     cmdRowLayout->addSpacing(10);
@@ -396,8 +400,8 @@ void MainWindow::setupUi()
     filterEditor_->setMaximumHeight(100);
 
     // Add label, editor filter panel
-    QGroupBox *filterGroupBox = new QGroupBox(tr("Filter Keywords"), this);
-    QVBoxLayout *filterLayout = new QVBoxLayout(filterGroupBox);
+    filterGroupBox_ = new QGroupBox(tr("Filter Keywords"), this);
+    QVBoxLayout *filterLayout = new QVBoxLayout(filterGroupBox_);
     filterLayout->setContentsMargins(8, 8, 8, 8);
     filterLayout->setSpacing(4);
     filterLayout->addWidget(filterEditor_);
@@ -405,7 +409,7 @@ void MainWindow::setupUi()
     // ===============  Add the batch group box to the quick layout ================
     quickLayout->addWidget(batchGroupBox);
     quickLayout->addWidget(knobGroupBox);
-    quickLayout->addWidget(filterGroupBox);
+    quickLayout->addWidget(filterGroupBox_);
     quickLayout->addStretch(1); // Push everything to the top
 
     // Add widgets to the splitter and set reasonable initial sizes
@@ -433,11 +437,17 @@ void MainWindow::setupUi()
     connect(logReadOnlyCheck_, &QCheckBox::stateChanged, this, [this](int state) {
         logView_->setReadOnly(state == Qt::Checked);
     });
+    connect(splitLineCheck_, &QCheckBox::stateChanged, this, [this](int state) {
+        updateSplitLineMode(state == Qt::Checked);
+    });
     connect(spaceBtn_, &QPushButton::clicked, this, [this] () {
+        flushLogBuffer(true);
         this->log("======================================================\n\n\n");
     });
     connect(commandLine_, &QLineEdit::returnPressed, this, &MainWindow::sendCommand);
-    connect(searchLine_, &QLineEdit::textChanged, this, &MainWindow::updateSearchMatches);
+    connect(searchLine_, &QLineEdit::textChanged, this, [this](const QString &) {
+        scheduleSearchRefresh();
+    });
     connect(searchLine_, &QLineEdit::returnPressed, this, &MainWindow::onSearchReturnPressed);
     connect(timer_, &QTimer::timeout, this, &MainWindow::timerHandler);
 

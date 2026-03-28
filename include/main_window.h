@@ -54,6 +54,9 @@ signals:
     void newSerialData(const QMap<QString, double> &values);
     void clearData(void);
 
+protected:
+    void closeEvent(QCloseEvent *event) override;
+
 private slots:
     void openSerial();
     void closeSerial();

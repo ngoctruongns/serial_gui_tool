@@ -2,6 +2,7 @@
 #include "log_highlighter.h"
 #include "highlight_rules_dialog.h"
 #include <QApplication>
+#include <QCloseEvent>
 #include <QComboBox>
 #include <QDateTime>
 #include <QDebug>
@@ -716,7 +717,7 @@ void MainWindow::saveFile()
     file.close();
 }
 
-void MainWindow::exitApp()
+void MainWindow::closeEvent(QCloseEvent *event)
 {
     flushLogBuffer(true);
 
@@ -743,12 +744,17 @@ void MainWindow::exitApp()
     QString content = cmdListView_->toPlainText();
     saveToFile(BATCH_COMMAND_FILE_PATH, content);
 
-    // Close plot window if open, then quit
-    if (plotWindow_) {
+    if (plotWindow_)
         plotWindow_->close();
-    }
-    qApp->quit();
+
+    event->accept();
 }
+
+void MainWindow::exitApp()
+{
+    close();
+}
+
 
 void MainWindow::searchLog()
 {

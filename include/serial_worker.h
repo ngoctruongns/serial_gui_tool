@@ -10,11 +10,12 @@ public:
     explicit SerialWorker(QObject *parent = nullptr);
     ~SerialWorker();
 
+public slots:
     bool openPort(const QString &portName, int baudrate = 115200);
     void closePort();
     bool sendData(const QByteArray &data);
-    bool isOpen() const { return serial_.isOpen(); }
     void clearBuffer();
+    bool isOpen() const { return serial_.isOpen(); }
 
 signals:
     void dataReceived(const QByteArray &data);

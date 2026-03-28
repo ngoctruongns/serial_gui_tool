@@ -2,6 +2,7 @@
 #include "log_highlighter.h"
 #include "highlight_rules_dialog.h"
 #include <QApplication>
+#include <QCloseEvent>
 #include <QComboBox>
 #include <QDateTime>
 #include <QDebug>
@@ -20,8 +21,17 @@
 #include <QDialog>
 #include <QPlainTextEdit>
 #include <QKeyEvent>
+#include <QTcpSocket>
 #include <QThread>
-#include <QRandomGenerator>
+#include <QMetaObject>
+
+namespace {
+constexpr int kLogBufferFlushThreshold = 2 * 1024;
+constexpr int kLogBufferMaxSize = 3 * 1024;
+constexpr int kSerialUiFlushIntervalMs = 20;
+constexpr int kSearchDebounceMs = 180;
+constexpr int kCompleterDebounceMs = 350;
+}
 
 // Implementation of CommandLineEdit with arrow key support
 CommandLineEdit::CommandLineEdit(QWidget *parent)
@@ -66,7 +76,7 @@ void CommandLineEdit::keyPressEvent(QKeyEvent *event)
     }
 
     // For any other key, reset history index when user types
-    if (event->text().length() > 0 && !event->text()[0].isNull()) {
+    if (event->text().length() > 0 && !event->text().at(0).isNull()) {
         historyIndex_ = -1;
     }
 
@@ -140,8 +150,32 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         autoScrollCheck_->setChecked(autoScrollEnabled_);
     }
 
-    // Create worker AFTER UI is setup
-    worker_ = new SerialWorker(this); // parent = this, no manual delete needed
+    serialUiFlushTimer_ = new QTimer(this);
+    serialUiFlushTimer_->setInterval(kSerialUiFlushIntervalMs);
+    connect(serialUiFlushTimer_, &QTimer::timeout, this, &MainWindow::processPendingSerialData);
+    serialUiFlushTimer_->start();
+
+    searchDebounceTimer_ = new QTimer(this);
+    searchDebounceTimer_->setSingleShot(true);
+    searchDebounceTimer_->setInterval(kSearchDebounceMs);
+    connect(searchDebounceTimer_, &QTimer::timeout, this, [this]() {
+        updateSearchMatches(searchLine_->text());
+    });
+
+    completerDebounceTimer_ = new QTimer(this);
+    completerDebounceTimer_->setSingleShot(true);
+    completerDebounceTimer_->setInterval(kCompleterDebounceMs);
+    connect(completerDebounceTimer_, &QTimer::timeout, this, &MainWindow::updateCompleter);
+
+    // Create worker in dedicated thread so serial I/O does not block UI thread
+    workerThread_ = new QThread(this);
+    worker_ = new SerialWorker();
+    worker_->moveToThread(workerThread_);
+    connect(workerThread_, &QThread::finished, worker_, &QObject::deleteLater);
+    workerThread_->start();
+
+    // Create socket to connect with remote device
+    socket_ = new QTcpSocket(this);
 
     // Setup command completer from history
     updateCommandCompleter();
@@ -155,23 +189,71 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     });
 
     // Serial worker signals
-    connect(worker_, &SerialWorker::dataReceived, this, &MainWindow::onDataReceived);
-    connect(worker_, &SerialWorker::errorOccurred, this, &MainWindow::onError);
+    connect(worker_, &SerialWorker::dataReceived, this, &MainWindow::onDataReceived,
+            Qt::QueuedConnection);
+    connect(worker_, &SerialWorker::errorOccurred, this, &MainWindow::onError,
+            Qt::QueuedConnection);
+    connect(worker_, &SerialWorker::portOpened, this, [this]() {
+        workerPortOpen_ = true;
+    }, Qt::QueuedConnection);
+    connect(worker_, &SerialWorker::portClosed, this, [this]() {
+        workerPortOpen_ = false;
+    }, Qt::QueuedConnection);
+
+    // Socket signal
+    connect(socket_, &QTcpSocket::readyRead, this, &MainWindow::readSocketData);
 
     closeBtn_->setEnabled(false);
     updatePortList();
+    updateSplitLineMode(splitLineCheck_ && splitLineCheck_->isChecked());
     initFlag_ = true;
 }
 
 MainWindow::~MainWindow()
 {
+    flushLogBuffer(true);
+    processPendingSerialData();
+
+    if (worker_ && workerThread_) {
+        QMetaObject::invokeMethod(worker_, "closePort", Qt::BlockingQueuedConnection);
+    }
+    if (workerThread_) {
+        workerThread_->quit();
+        workerThread_->wait();
+    }
+}
+
+bool MainWindow::isWorkerPortOpen()
+{
+    if (!worker_ || !workerThread_)
+        return false;
+
+    bool isOpen = false;
+    QMetaObject::invokeMethod(worker_, "isOpen", Qt::BlockingQueuedConnection,
+                              Q_RETURN_ARG(bool, isOpen));
+    workerPortOpen_ = isOpen;
+    return isOpen;
 }
 
 void MainWindow::updatePortList()
 {
     portCombo_->clear();
-    for (auto &info : QSerialPortInfo::availablePorts())
-        portCombo_->addItem(info.portName());
+    QString device = deviceCombo_->currentText();
+
+    if (device == "Local") {
+        for (auto &info : QSerialPortInfo::availablePorts())
+            portCombo_->addItem(info.portName());
+    } else {
+        // TODO: Check remote device IP
+        QString ipAddr = remoteIpLine_->text();
+        int portNum = 2026;
+        log("Find UART port in remote device IP: " + ipAddr);
+        if (socket_->state() == QAbstractSocket::UnconnectedState) {
+            // socket_->connectToHost(ipAddr, portNum);
+            socket_->connectToHost("10.218.142.12", 2026);
+            log("\nConnect to port number " + QString::number(portNum));
+        }
+    }
 }
 
 void MainWindow::openSerial()
@@ -188,20 +270,28 @@ void MainWindow::openSerial()
     }
 
     int baud = baudCombo_->currentData().toInt();
-    if (worker_->openPort(port, baud)) {
+    bool opened = false;
+    QMetaObject::invokeMethod(worker_, "openPort", Qt::BlockingQueuedConnection,
+                              Q_RETURN_ARG(bool, opened), Q_ARG(QString, port),
+                              Q_ARG(int, baud));
+    if (opened) {
+        workerPortOpen_ = true;
         log("Opened " + port + " at " + QString::number(baud) + " baud.");
         openBtn_->setEnabled(false);
         closeBtn_->setEnabled(true);
 
         // Clear log, buffer and plot, serial buffer
         // clearLog();
-        worker_->clearBuffer();
+        QMetaObject::invokeMethod(worker_, "clearBuffer", Qt::QueuedConnection);
     }
 }
 
 void MainWindow::closeSerial()
 {
-    worker_->closePort();
+    if (worker_) {
+        QMetaObject::invokeMethod(worker_, "closePort", Qt::BlockingQueuedConnection);
+    }
+    workerPortOpen_ = false;
     log("Closed port.");
     openBtn_->setEnabled(true);
     closeBtn_->setEnabled(false);
@@ -209,7 +299,14 @@ void MainWindow::closeSerial()
 
 void MainWindow::sendCommand()
 {
-    if (!worker_ || !worker_->isOpen()) {
+    if (socket_->isOpen()) {
+        QString data = commandLine_->text();
+        data.append(eolMode_);
+        socket_->write(data.toUtf8());
+        return;
+    }
+
+    if (!worker_ || !isWorkerPortOpen()) {
         QMessageBox::warning(this, "Warning", "Serial port not open");
         return;
     }
@@ -226,19 +323,28 @@ void MainWindow::sendCommand()
         // parse input string as hex
         QByteArray bytes;
         QStringList parts = cmd.split(' ', Qt::SkipEmptyParts);
-        for (const QString &p : parts)
+        for (const QString &p : qAsConst(parts))
             bytes.append(static_cast<char>(p.toUInt(nullptr, 16)));
-        worker_->sendData(bytes);
+        bool sent = false;
+        QMetaObject::invokeMethod(worker_, "sendData", Qt::BlockingQueuedConnection,
+                                  Q_RETURN_ARG(bool, sent), Q_ARG(QByteArray, bytes));
+        if (!sent)
+            log("TX failed (HEX)");
         log("TX (HEX): " + cmd);
     } else {
-        worker_->sendData(cmd.toUtf8());
+        bool sent = false;
+        QByteArray data = cmd.toUtf8();
+        QMetaObject::invokeMethod(worker_, "sendData", Qt::BlockingQueuedConnection,
+                                  Q_RETURN_ARG(bool, sent), Q_ARG(QByteArray, data));
+        if (!sent)
+            log("TX failed");
         log("TX: " + cmd);
     }
 }
 
 void MainWindow::sendAllCommands()
 {
-    if (!worker_ || !worker_->isOpen()) {
+    if (!worker_ || !isWorkerPortOpen()) {
         QMessageBox::warning(this, "Warning", "Serial port not open");
         return;
     }
@@ -251,62 +357,22 @@ void MainWindow::sendAllCommands()
         return;
 
     QStringList lines = content.split('\n');
-    QRegularExpression reDelaySec(R"(^\s*delay\(\s*([0-9]+(?:\.[0-9]+)?)\s*\)\s*$)", QRegularExpression::CaseInsensitiveOption);
-    QRegularExpression reDelayMs(R"(^\s*delay_ms\(\s*([0-9]+)\s*\)\s*$)", QRegularExpression::CaseInsensitiveOption);
-    QRegularExpression reRandDelay(R"(^\s*rand_delay\(\s*([0-9]+)\s*,\s*([0-9]+)\s*\)\s*$)", QRegularExpression::CaseInsensitiveOption);
-    QRegularExpression reComment(R"(^\s*comment\(.*\)\s*$)", QRegularExpression::CaseInsensitiveOption);
+    batchProc_->processBatchFile(lines);
+}
 
-    for (const QString &raw : lines) {
-        QString cmd = raw.trimmed();
-        if (cmd.isEmpty())
-            continue;
-
-        // Check for comment lines (start with # or comment(...))
-        if (cmd.startsWith('#') || reComment.match(cmd).hasMatch()) {
-            // Log comment (optional, for debugging)
-            log(QString("# %1\n").arg(cmd));
-            continue;
-        }
-
-        // Check for "delay(seconds)" special command
-        QRegularExpressionMatch m = reDelaySec.match(cmd);
-        if (m.hasMatch()) {
-            double secs = m.captured(1).toDouble();
-            log(QString("Delay %1 s\n").arg(secs));
-            unsigned long ms = static_cast<unsigned long>(secs * 1000.0);
-            if (ms > 0)
-                QThread::msleep(ms);
-            continue;
-        }
-
-        // Check for "delay_ms(ms)" special command
-        m = reDelayMs.match(cmd);
-        if (m.hasMatch()) {
-            unsigned long ms = m.captured(1).toULong();
-            log(QString("Delay %1 ms\n").arg(ms));
-            if (ms > 0)
-                QThread::msleep(ms);
-            continue;
-        }
-
-        // Check for "rand_delay(min_ms, max_ms)" special command
-        m = reRandDelay.match(cmd);
-        if (m.hasMatch()) {
-            quint32 minMs = m.captured(1).toUInt();
-            quint32 maxMs = m.captured(2).toUInt();
-            if (minMs > maxMs)
-                std::swap(minMs, maxMs);
-            quint32 delayMs = QRandomGenerator::global()->bounded(minMs, maxMs + 1);
-            log(QString("Random Delay %1 ms (range %2-%3 ms)\n").arg(delayMs).arg(minMs).arg(maxMs));
-            if (delayMs > 0)
-                QThread::msleep(delayMs);
-            continue;
-        }
-
-        // Normal command: set text and reuse sendCommand() for EOL/HEX handling
+void MainWindow::setTextAndSendCommand(const QString &cmd)
+{
+    // Normal command: set text and reuse sendCommand() for EOL/HEX handling
+    if (!cmd.isEmpty()) {
         commandLine_->setText(cmd);
         sendCommand();
     }
+}
+
+void MainWindow::readSocketData(void)
+{
+    QByteArray data = socket_->readAll();
+    log(QString::fromUtf8(data));
 }
 
 void MainWindow::onDataReceived(const QByteArray &data)
@@ -315,6 +381,23 @@ void MainWindow::onDataReceived(const QByteArray &data)
         initFlag_ = false;
         return;
     }
+
+    pendingSerialData_.append(data);
+
+    // If queue grows quickly, process immediately once to avoid lag spikes.
+    if (pendingSerialData_.size() >= kLogBufferFlushThreshold) {
+        processPendingSerialData();
+    }
+}
+
+void MainWindow::processPendingSerialData()
+{
+    if (pendingSerialData_.isEmpty()) {
+        return;
+    }
+
+    QByteArray data = pendingSerialData_;
+    pendingSerialData_.clear();
 
     if (hexCheck_->isChecked()) {
         QString hex = data.toHex(' ').toUpper();
@@ -386,7 +469,130 @@ void MainWindow::onError(const QString &msg)
     QMessageBox::critical(this, "Serial Error", msg);
 }
 
+void MainWindow::updateFilters()
+{
+    QString content = filterEditor_->toPlainText();
+    filterKeywords_ = content.split('\n', Qt::SkipEmptyParts);
+
+    // Remove white space in filter keywords
+    for (QString &keyword : filterKeywords_) {
+        keyword = keyword.trimmed();
+        qDebug() << keyword;
+    }
+}
+
 void MainWindow::log(const QString &msg)
+{
+    if (splitLineCheck_ && !splitLineCheck_->isChecked()) {
+        displayToLogView(msg);
+        return;
+    }
+
+    // Add msg to log buffer
+    logBuffer_.append(msg);
+
+    flushLogBuffer(false);
+}
+
+void MainWindow::flushLogBuffer(bool force)
+{
+    if (logBuffer_.isEmpty()) {
+        return;
+    }
+
+    QString textToDisplay;
+
+    while (!logBuffer_.isEmpty()) {
+        int flushLength = 0;
+
+        if (force) {
+            flushLength = logBuffer_.size();
+        } else {
+            int newlineIndex = logBuffer_.lastIndexOf('\n');
+            if (newlineIndex >= 0) {
+                flushLength = newlineIndex + 1;
+            } else if (logBuffer_.size() >= kLogBufferFlushThreshold) {
+                flushLength = logBuffer_.size();
+            }
+        }
+
+        if (flushLength <= 0) {
+            break;
+        }
+
+        QString flushedText = logBuffer_.left(flushLength);
+        logBuffer_.remove(0, flushLength);
+
+        if (!force && logBuffer_.size() > kLogBufferMaxSize) {
+            force = true;
+        }
+
+        const bool filterEnabled = splitLineCheck_ && splitLineCheck_->isChecked() &&
+                                   filterGroupBox_ && filterGroupBox_->isEnabled();
+
+        if (!filterEnabled || filterKeywords_.isEmpty()) {
+            textToDisplay.append(flushedText);
+            continue;
+        }
+
+        int start = 0;
+        while (start < flushedText.size()) {
+            int end = flushedText.indexOf('\n', start);
+            QString line;
+
+            if (end >= 0) {
+                line = flushedText.mid(start, end - start + 1);
+                start = end + 1;
+            } else {
+                line = flushedText.mid(start);
+                start = flushedText.size();
+            }
+
+            bool shouldFilter = false;
+            for (const QString &keyword : filterKeywords_) {
+                if (line.contains(keyword, Qt::CaseInsensitive)) {
+                    shouldFilter = true;
+                    break;
+                }
+            }
+
+            if (!shouldFilter) {
+                textToDisplay.append(line);
+            }
+        }
+    }
+
+    if (!textToDisplay.isEmpty()) {
+        displayToLogView(textToDisplay);
+    }
+}
+
+void MainWindow::scheduleSearchRefresh()
+{
+    if (searchDebounceTimer_) {
+        searchDebounceTimer_->start();
+    }
+}
+
+void MainWindow::scheduleCompleterRefresh()
+{
+    if (completerDebounceTimer_) {
+        completerDebounceTimer_->start();
+    }
+}
+
+void MainWindow::updateSplitLineMode(bool enabled)
+{
+    if (!enabled) {
+        flushLogBuffer(true);
+    }
+
+    if (filterGroupBox_) {
+        filterGroupBox_->setEnabled(enabled);
+    }
+}
+
+void MainWindow::displayToLogView(const QString &text)
 {
     // Save current scroll bar position
     QScrollBar *vScrollBar = logView_->verticalScrollBar();
@@ -404,7 +610,7 @@ void MainWindow::log(const QString &msg)
     // This ensures new log entries are appended at the end, not at cursor position
     cursor.movePosition(QTextCursor::End);
     logView_->setTextCursor(cursor);
-    logView_->insertPlainText(msg);
+    logView_->insertPlainText(text);
 
     // Auto scroll to end only if auto-scroll is enabled
     if (autoScrollEnabled_) {
@@ -423,16 +629,18 @@ void MainWindow::log(const QString &msg)
         }
     }
 
-    // Update search highlights if search term is not empty
+    scheduleCompleterRefresh();
+
+    // Debounce expensive search refresh while logs are being appended quickly
     if (!searchLine_->text().isEmpty()) {
-        highlightSearchResults(searchLine_->text());
-        updateSearchMatches(searchLine_->text());
-        updateSearchCountLabel();
+        scheduleSearchRefresh();
     }
 }
 
 void MainWindow::clearLog()
 {
+    flushLogBuffer(true);
+
     // If there's content, save it into ./log with default filename before clearing
     QString contents = logView_->toPlainText();
     if (!contents.isEmpty()) {
@@ -451,6 +659,8 @@ void MainWindow::clearLog()
     }
 
     logView_->clear();
+    logBuffer_.clear();
+    pendingSerialData_.clear();
     buffer_.clear();
     emit clearData();
     initFlag_ = true;
@@ -507,8 +717,10 @@ void MainWindow::saveFile()
     file.close();
 }
 
-void MainWindow::exitApp()
+void MainWindow::closeEvent(QCloseEvent *event)
 {
+    flushLogBuffer(true);
+
     // Auto-save log if option is enabled and there's content
     if (autoSaveOnExit_) {
         QString contents = logView_->toPlainText();
@@ -528,12 +740,21 @@ void MainWindow::exitApp()
         }
     }
 
-    // Close plot window if open, then quit
-    if (plotWindow_) {
+    // Save batch command to file
+    QString content = cmdListView_->toPlainText();
+    saveToFile(BATCH_COMMAND_FILE_PATH, content);
+
+    if (plotWindow_)
         plotWindow_->close();
-    }
-    qApp->quit();
+
+    event->accept();
 }
+
+void MainWindow::exitApp()
+{
+    close();
+}
+
 
 void MainWindow::searchLog()
 {
@@ -561,13 +782,7 @@ void MainWindow::updateCompleter()
     QStringList words = allText.split(QRegExp("\\W+"), Qt::SkipEmptyParts);
     words.removeDuplicates();
 
-    QCompleter *completer = new QCompleter(words, this);
-    completer->setCaseSensitivity(Qt::CaseInsensitive);
-    completer->setCompletionMode(QCompleter::PopupCompletion);
-    searchLine_->setCompleter(completer);
-
-    // Also update highlights for current search term
-    highlightSearchResults(searchLine_->text());
+    completerModel_->setStringList(words);
 }
 
 void MainWindow::highlightSearchResults(const QString &term)
@@ -600,6 +815,9 @@ void MainWindow::highlightSearchResults(const QString &term)
 
 void MainWindow::updateSearchMatches(const QString &term)
 {
+    // Also update highlights for current search term
+    highlightSearchResults(searchLine_->text());
+
     // Find all matches and update the list
     searchMatches_.clear();
     currentSearchIndex_ = -1;
@@ -789,22 +1007,27 @@ void MainWindow::clearLogs()
     showMessageAutoClose("Info", QString("Deleted %1 log file(s).").arg(deletedCount), 1500);
 }
 
-QString MainWindow::loadCommandsFromFile()
+// Return empty string if file doesn't exist
+QString MainWindow::loadFromFile(QString fPath)
 {
+    QStringList listPath = fPath.split('/', Qt::SkipEmptyParts);
+    QString folder_ = listPath.at(0);
+    // QString file_ = listPath.at(1);
+
     QDir dir(QDir::currentPath());
-    if (!dir.exists("cmd")) {
-        dir.mkdir("cmd");
+    if (!dir.exists(folder_)) {
+        dir.mkdir(folder_);
     }
 
-    QString filePath = dir.filePath("cmd/command.txt");
+    QString filePath = dir.filePath(fPath);
     QFile file(filePath);
 
     if (!file.exists()) {
-        return QString(); // Return empty string if file doesn't exist
+        return QString();
     }
 
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        QMessageBox::warning(this, "Error", "Unable to read command file: " + filePath);
+        QMessageBox::warning(this, "Error", "Unable to read batch command file: " + filePath);
         return QString();
     }
 
@@ -815,24 +1038,40 @@ QString MainWindow::loadCommandsFromFile()
     return content;
 }
 
-void MainWindow::saveCommandsToFile(const QString &content)
+// Return -1 if save file failed, 0 if save success
+int MainWindow::saveToFile(QString fPath, const QString &content)
 {
+    QStringList listPath = fPath.split('/', Qt::SkipEmptyParts);
+    QString folder_ = listPath.at(0);
+    // QString file_ = listPath.at(1);
+
     QDir dir(QDir::currentPath());
-    if (!dir.exists("cmd")) {
-        dir.mkdir("cmd");
+    if (!dir.exists(folder_)) {
+        dir.mkdir(folder_);
     }
 
-    QString filePath = dir.filePath("cmd/command.txt");
+    QString filePath = dir.filePath(fPath);
     QFile file(filePath);
 
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        QMessageBox::warning(this, "Error", "Unable to write to command file: " + filePath);
-        return;
+        QMessageBox::warning(this, "Error", "Unable to write to batch command file: " + filePath);
+        return -1;
     }
 
     QTextStream out(&file);
     out << content;
     file.close();
+    return 0;
+}
+
+QString MainWindow::loadCommandsFromFile()
+{
+    return loadFromFile(COMMAND_FILE_PATH);
+}
+
+void MainWindow::saveCommandsToFile(const QString &content)
+{
+    saveToFile(COMMAND_FILE_PATH, content);
 }
 
 void MainWindow::loadCommands()
@@ -1117,19 +1356,8 @@ void MainWindow::openHighlightRules()
 
 void MainWindow::saveSettings()
 {
-    QDir dir(QDir::currentPath());
-    if (!dir.exists("cmd"))
-        dir.mkdir("cmd");
-
-    QString filePath = dir.filePath("cmd/settings.txt");
-    QFile file(filePath);
-
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        QMessageBox::warning(this, "Error", "Unable to write to settings file: " + filePath);
-        return;
-    }
-
-    QTextStream out(&file);
+    QString content;
+    QTextStream out(&content);
     out << "FontSize=" << logFontSize_ << "\n";
 
     QString eolModeStr;
@@ -1146,7 +1374,9 @@ void MainWindow::saveSettings()
     out << "LogBgColor=" << logBgColor_.name() << "\n";
     out << "LogTextColor=" << logTextColor_.name() << "\n";
     out << "SearchHighlightColor=" << searchHighlightColor_.name() << "\n";
-    file.close();
+
+    // Save content to setting file
+    saveToFile(SETTING_FILE_PATH, content.toUtf8());
 }
 
 void MainWindow::loadSettings()
@@ -1155,7 +1385,7 @@ void MainWindow::loadSettings()
     if (!dir.exists("cmd"))
         return;
 
-    QString filePath = dir.filePath("cmd/settings.txt");
+    QString filePath = dir.filePath(SETTING_FILE_PATH);
     QFile file(filePath);
 
     if (!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text))
@@ -1213,21 +1443,11 @@ void MainWindow::loadSettings()
 
 void MainWindow::saveQuickGroupLabels()
 {
-    QDir dir(QDir::currentPath());
-    if (!dir.exists("cmd"))
-        dir.mkdir("cmd");
-
-    QString filePath = dir.filePath("cmd/quick_groups.txt");
-    QFile file(filePath);
-
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        return;
-    }
-
-    QTextStream out(&file);
+    QString content;
+    QTextStream out(&content);
     out << "Group1=" << quickGroup1Label_ << "\n";
     out << "Group2=" << quickGroup2Label_ << "\n";
-    file.close();
+    saveToFile(QUICK_GROUP_FILE_PATH, content.toUtf8());
 }
 
 void MainWindow::loadQuickGroupLabels()
@@ -1236,7 +1456,7 @@ void MainWindow::loadQuickGroupLabels()
     if (!dir.exists("cmd"))
         return;
 
-    QString filePath = dir.filePath("cmd/quick_groups.txt");
+    QString filePath = dir.filePath(QUICK_GROUP_FILE_PATH);
     QFile file(filePath);
 
     if (!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text))

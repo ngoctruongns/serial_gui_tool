@@ -4,9 +4,17 @@
 #include <QCheckBox>
 #include <QLineEdit>
 #include <QStringList>
+#include <QColor>
 #include "serial_worker.h"
 #include "plot_widget.h"
-#include <QColor>
+#include "batch_command.h"
+
+// Define file paths
+#define COMMAND_FILE_PATH "cmd/command.txt"
+#define BATCH_COMMAND_FILE_PATH "cmd/batch_command.txt"
+#define QUICK_COMMAND_FILE_PATH "cmd/quick_command.txt"
+#define QUICK_GROUP_FILE_PATH "cmd/quick_groups.txt"
+#define SETTING_FILE_PATH "cmd/settings.txt"
 
 class QTextEdit;
 class QPlainTextEdit;
@@ -15,6 +23,9 @@ class QTimer;
 class QPushButton;
 class QComboBox;
 class QDialog;
+class QTcpSocket ;
+class QThread;
+class QGroupBox;
 
 // Custom QLineEdit with arrow key support for command history
 class CommandLineEdit : public QLineEdit
@@ -43,11 +54,16 @@ signals:
     void newSerialData(const QMap<QString, double> &values);
     void clearData(void);
 
+protected:
+    void closeEvent(QCloseEvent *event) override;
+
 private slots:
     void openSerial();
     void closeSerial();
     void sendCommand();
+    void setTextAndSendCommand(const QString &cmd);
     void onDataReceived(const QByteArray &data);
+    void readSocketData(void);
     void onError(const QString &msg);
     void searchLog();
     void searchUp();
@@ -60,10 +76,18 @@ private slots:
     void clearLogs();
     void loadCommands();
     void sendAllCommands();
+    void updateFilters();
 
-    private:
+private:
     void updatePortList();
     void log(const QString &msg);
+    void flushLogBuffer(bool force = false);
+    void processPendingSerialData();
+    void scheduleSearchRefresh();
+    void scheduleCompleterRefresh();
+    void updateSplitLineMode(bool enabled);
+    bool isWorkerPortOpen();
+    void displayToLogView(const QString &msg);
     void onDataPlotter(const QString &line);
     void clearLog();
     void updateCompleter();
@@ -73,6 +97,10 @@ private slots:
     void timerHandler();
     void showMessageAutoClose(const QString &title, const QString &msg, int timeoutMs = 1500);
     void setupUi();
+
+    QString loadFromFile(QString filePath);
+    int saveToFile(QString fPath, const QString &content);
+
     QString loadCommandsFromFile();
     void saveCommandsToFile(const QString &content);
     void updateCommandCompleter();
@@ -87,10 +115,17 @@ private slots:
     bool initFlag_;
     SerialWorker *worker_;
     QPlainTextEdit *logView_;
+    QComboBox *deviceCombo_;
     QComboBox *portCombo_;
     QComboBox *baudCombo_;
     CommandLineEdit *commandLine_;
+    QLineEdit *remoteIpLine_;
     QLineEdit *searchLine_;
+    QTcpSocket *socket_;
+    QString logBuffer_;
+    QStringList filterKeywords_;
+    QPlainTextEdit *filterEditor_;
+
     QLabel *searchCountLabel_;     // Label to show "x/y" search count
     QPushButton *loadBtn_;
     QPushButton *spaceBtn_;
@@ -109,18 +144,18 @@ private slots:
     QPushButton *quickBtn8_;
     QPushButton *quickBtn9_;
     QPushButton *quickBtn10_;
-    // Small edit buttons next to each quick-send button to configure the
-    // command string shown/sent when the quick button is pressed.
-    QPushButton *quickEditBtn1_;
-    QPushButton *quickEditBtn2_;
-    QPushButton *quickEditBtn3_;
-    QPushButton *quickEditBtn4_;
-    QPushButton *quickEditBtn5_;
-    QPushButton *quickEditBtn6_;
-    QPushButton *quickEditBtn7_;
-    QPushButton *quickEditBtn8_;
-    QPushButton *quickEditBtn9_;
-    QPushButton *quickEditBtn10_;
+    // Small inline editors next to each quick-send button so the user can
+    // directly view and edit the associated command string.
+    CommandLineEdit *quickEdit1_;
+    CommandLineEdit *quickEdit2_;
+    CommandLineEdit *quickEdit3_;
+    CommandLineEdit *quickEdit4_;
+    CommandLineEdit *quickEdit5_;
+    CommandLineEdit *quickEdit6_;
+    CommandLineEdit *quickEdit7_;
+    CommandLineEdit *quickEdit8_;
+    CommandLineEdit *quickEdit9_;
+    CommandLineEdit *quickEdit10_;
     // Group labels for quick buttons
     QString quickGroup1Label_;
     QString quickGroup2Label_;
@@ -130,6 +165,15 @@ private slots:
     // Batch command area: multi-line edit and Send All button placed under Group 2
     QPlainTextEdit *cmdListView_;
     QPushButton *sendAllBtn_;
+    BatchProcessor *batchProc_;
+
+    // Knob sub command GUI
+    QPushButton *startBtn_;
+    QPushButton *powerBtn_;
+    QPushButton *ccwBtn_;
+    QPushButton *cwBtn_;
+    QPushButton *unlockBtn_;
+    QPushButton *wifiBtn_;
 
     // Basic UI elements for serial port configuration and control
     QPushButton *searchUpBtn_;
@@ -139,10 +183,18 @@ private slots:
     QCheckBox *sendHex_;
     QCheckBox *autoScrollCheck_;
     QCheckBox *logReadOnlyCheck_;
+    QCheckBox *splitLineCheck_ = nullptr;
     QByteArray buffer_;
-    QCompleter *completer_;
+    QByteArray pendingSerialData_;
+    QStringListModel* completerModel_;
     QCompleter *commandCompleter_;
     QTimer *timer_;
+    QTimer *serialUiFlushTimer_ = nullptr;
+    QTimer *searchDebounceTimer_ = nullptr;
+    QTimer *completerDebounceTimer_ = nullptr;
+    QThread *workerThread_ = nullptr;
+    QGroupBox *filterGroupBox_ = nullptr;
+    bool workerPortOpen_ = false;
 
     PlotWindow* plotWindow_ = nullptr;
 

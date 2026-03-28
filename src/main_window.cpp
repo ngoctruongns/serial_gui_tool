@@ -8,6 +8,10 @@
 #include <QDebug>
 #include <QFile>
 #include <QDir>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonParseError>
 #include <QFileDialog>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -31,6 +35,7 @@ constexpr int kLogBufferMaxSize = 3 * 1024;
 constexpr int kSerialUiFlushIntervalMs = 20;
 constexpr int kSearchDebounceMs = 180;
 constexpr int kCompleterDebounceMs = 350;
+constexpr int kRemoteGatewayPort = 9026;
 }
 
 // Implementation of CommandLineEdit with arrow key support
@@ -202,6 +207,37 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
 
     // Socket signal
     connect(socket_, &QTcpSocket::readyRead, this, &MainWindow::readSocketData);
+    connect(socket_, &QTcpSocket::connected, this, [this]() {
+        log(QString("Connected to remote gateway %1:%2")
+                .arg(remoteTargetIp_)
+                .arg(kRemoteGatewayPort));
+
+        sendRemoteRequest("list_ports");
+
+        if (remoteOpenPending_) {
+            QJsonObject payload;
+            payload["port"] = remotePendingPort_;
+            payload["baudrate"] = remotePendingBaud_;
+            sendRemoteRequest("open", payload);
+        }
+    });
+    connect(socket_, &QTcpSocket::disconnected, this, [this]() {
+        remoteSerialOpen_ = false;
+        remoteOpenPending_ = false;
+        remotePendingActions_.clear();
+        openBtn_->setEnabled(true);
+        closeBtn_->setEnabled(false);
+        log("Remote gateway disconnected.");
+    });
+    connect(socket_,
+            QOverload<QAbstractSocket::SocketError>::of(&QTcpSocket::errorOccurred),
+            this,
+            [this](QAbstractSocket::SocketError) {
+                remoteSerialOpen_ = false;
+                openBtn_->setEnabled(true);
+                closeBtn_->setEnabled(false);
+                log("Remote socket error: " + socket_->errorString());
+            });
 
     closeBtn_->setEnabled(false);
     updatePortList();
@@ -223,6 +259,224 @@ MainWindow::~MainWindow()
     }
 }
 
+bool MainWindow::isRemoteMode() const
+{
+    return deviceCombo_ && deviceCombo_->currentText() == "Remote";
+}
+
+QString MainWindow::remoteUserName() const
+{
+    if (!remoteUserLine_)
+        return QString();
+    return remoteUserLine_->text().trimmed();
+}
+
+void MainWindow::updateRemoteInputVisibility()
+{
+    const bool remote = isRemoteMode();
+
+    if (remoteIpLabel_)
+        remoteIpLabel_->setVisible(remote);
+    if (remoteIpLine_)
+        remoteIpLine_->setVisible(remote);
+    if (remoteUserLabel_)
+        remoteUserLabel_->setVisible(remote);
+    if (remoteUserLine_)
+        remoteUserLine_->setVisible(remote);
+
+    if (!remote) {
+        remoteOpenPending_ = false;
+        remoteSerialOpen_ = false;
+        remoteOwnerUser_.clear();
+        remotePendingActions_.clear();
+        remoteSocketBuffer_.clear();
+        if (socket_ && socket_->state() != QAbstractSocket::UnconnectedState) {
+            socket_->disconnectFromHost();
+        }
+    }
+}
+
+bool MainWindow::ensureRemoteConnected()
+{
+    if (!isRemoteMode() || !socket_) {
+        return false;
+    }
+
+    const QString ipAddr = remoteIpLine_ ? remoteIpLine_->text().trimmed() : QString();
+    if (ipAddr.isEmpty()) {
+        QMessageBox::warning(this, "Warning", "Please enter remote IP address");
+        return false;
+    }
+
+    if (socket_->state() == QAbstractSocket::ConnectedState && remoteTargetIp_ == ipAddr) {
+        return true;
+    }
+
+    if (socket_->state() == QAbstractSocket::ConnectingState && remoteTargetIp_ == ipAddr) {
+        return false;
+    }
+
+    if (socket_->state() != QAbstractSocket::UnconnectedState) {
+        socket_->abort();
+    }
+
+    remoteTargetIp_ = ipAddr;
+    socket_->connectToHost(ipAddr, kRemoteGatewayPort);
+    log(QString("Connecting to remote gateway %1:%2...")
+            .arg(ipAddr)
+            .arg(kRemoteGatewayPort));
+    return false;
+}
+
+void MainWindow::sendRemoteRequest(const QString &action)
+{
+    sendRemoteRequest(action, QJsonObject());
+}
+
+void MainWindow::sendRemoteRequest(const QString &action, const QJsonObject &payload)
+{
+    if (!socket_ || socket_->state() != QAbstractSocket::ConnectedState) {
+        return;
+    }
+
+    const int requestId = remoteNextRequestId_++;
+
+    QJsonObject request = payload;
+    request["id"] = requestId;
+    request["action"] = action;
+
+    const QString user = remoteUserName();
+    if (!user.isEmpty()) {
+        request["user"] = user;
+    }
+
+    remotePendingActions_.insert(requestId, action);
+
+    const QJsonDocument doc(request);
+    QByteArray wire = doc.toJson(QJsonDocument::Compact);
+    wire.append('\n');
+    socket_->write(wire);
+}
+
+void MainWindow::handleRemoteResponse(int requestId, const QJsonObject &message)
+{
+    const QString action = remotePendingActions_.take(requestId);
+    const bool ok = message.value("ok").toBool(false);
+
+    if (!ok) {
+        const QJsonObject errObj = message.value("error").toObject();
+        const QString code = errObj.value("code").toString();
+        const QString errMsg = errObj.value("message").toString("Unknown error");
+        QString ownerUser = errObj.value("owner_user").toString();
+        if (ownerUser.isEmpty())
+            ownerUser = message.value("owner_user").toString();
+
+        if (action == "open" && code == "busy") {
+            remoteSerialOpen_ = false;
+            remoteOpenPending_ = false;
+            openBtn_->setEnabled(true);
+            closeBtn_->setEnabled(false);
+
+            QString busyMsg = "Serial port is busy";
+            if (!ownerUser.isEmpty()) {
+                busyMsg = QString("Serial port is currently used by user: %1").arg(ownerUser);
+                remoteOwnerUser_ = ownerUser;
+            }
+            QMessageBox::warning(this, "Port Busy", busyMsg);
+            log("Remote open denied: " + errMsg);
+            return;
+        }
+
+        if (action == "open") {
+            remoteOpenPending_ = false;
+        }
+
+        if (action == "close") {
+            remoteSerialOpen_ = false;
+            openBtn_->setEnabled(true);
+            closeBtn_->setEnabled(false);
+        }
+
+        log(QString("Remote %1 failed: %2").arg(action, errMsg));
+        return;
+    }
+
+    if (action == "list_ports") {
+        portCombo_->clear();
+        const QJsonArray ports = message.value("ports").toArray();
+        for (const QJsonValue &value : ports) {
+            const QJsonObject obj = value.toObject();
+            const QString dev = obj.value("device").toString();
+            if (!dev.isEmpty()) {
+                portCombo_->addItem(dev);
+            }
+        }
+        if (portCombo_->count() == 0) {
+            portCombo_->addItem("No remote ports");
+        }
+        return;
+    }
+
+    if (action == "open") {
+        remoteSerialOpen_ = true;
+        remoteOpenPending_ = false;
+        remoteOwnerUser_ = remoteUserName();
+        openBtn_->setEnabled(false);
+        closeBtn_->setEnabled(true);
+        log("Remote serial port opened.");
+        return;
+    }
+
+    if (action == "close") {
+        remoteSerialOpen_ = false;
+        remoteOwnerUser_.clear();
+        openBtn_->setEnabled(true);
+        closeBtn_->setEnabled(false);
+        log("Remote serial port closed.");
+        return;
+    }
+}
+
+void MainWindow::handleRemoteMessage(const QJsonObject &message)
+{
+    if (message.contains("event")) {
+        const QString event = message.value("event").toString();
+        if (event == "hello") {
+            return;
+        }
+
+        if (event == "serial_data") {
+            const QByteArray data = QByteArray::fromBase64(
+                message.value("data_b64").toString().toLatin1());
+            if (hexCheck_->isChecked()) {
+                log(data.toHex(' ').toUpper());
+            } else {
+                log(QString::fromUtf8(data));
+            }
+            return;
+        }
+
+        if (event == "serial_error") {
+            const QString errMsg = message.value("message").toString("Remote serial error");
+            log("Remote serial error: " + errMsg);
+            QMessageBox::warning(this, "Remote Serial Error", errMsg);
+            return;
+        }
+
+        return;
+    }
+
+    if (!message.contains("id")) {
+        return;
+    }
+
+    const int requestId = message.value("id").toInt(-1);
+    if (requestId < 0) {
+        return;
+    }
+    handleRemoteResponse(requestId, message);
+}
+
 bool MainWindow::isWorkerPortOpen()
 {
     if (!worker_ || !workerThread_)
@@ -238,26 +492,55 @@ bool MainWindow::isWorkerPortOpen()
 void MainWindow::updatePortList()
 {
     portCombo_->clear();
-    QString device = deviceCombo_->currentText();
-
-    if (device == "Local") {
+    if (!isRemoteMode()) {
         for (auto &info : QSerialPortInfo::availablePorts())
             portCombo_->addItem(info.portName());
     } else {
-        // TODO: Check remote device IP
-        QString ipAddr = remoteIpLine_->text();
-        int portNum = 2026;
-        log("Find UART port in remote device IP: " + ipAddr);
-        if (socket_->state() == QAbstractSocket::UnconnectedState) {
-            // socket_->connectToHost(ipAddr, portNum);
-            socket_->connectToHost("10.218.142.12", 2026);
-            log("\nConnect to port number " + QString::number(portNum));
+        if (!remoteIpLine_ || remoteIpLine_->text().trimmed().isEmpty()) {
+            portCombo_->addItem("Enter Remote IP");
+            return;
+        }
+
+        if (ensureRemoteConnected()) {
+            sendRemoteRequest("list_ports");
+        } else {
+            portCombo_->addItem("Connecting remote...");
         }
     }
 }
 
 void MainWindow::openSerial()
 {
+    if (isRemoteMode()) {
+        const QString user = remoteUserName();
+        if (user.isEmpty()) {
+            QMessageBox::warning(this, "Warning", "Please enter User name");
+            return;
+        }
+
+        const QString port = portCombo_->currentText().trimmed();
+        if (port.isEmpty() || port == "No remote ports" || port == "Connecting remote..." ||
+            port == "Enter Remote IP") {
+            QMessageBox::warning(this, "Warning", "No remote serial port selected!");
+            return;
+        }
+
+        const int baud = baudCombo_->currentData().toInt();
+        QJsonObject payload;
+        payload["port"] = port;
+        payload["baudrate"] = baud;
+
+        if (ensureRemoteConnected()) {
+            sendRemoteRequest("open", payload);
+        } else {
+            remoteOpenPending_ = true;
+            remotePendingPort_ = port;
+            remotePendingBaud_ = baud;
+            log("Waiting remote connection before opening serial port...");
+        }
+        return;
+    }
+
     if (!worker_) {
         QMessageBox::critical(this, "Error", "Serial worker not initialized");
         return;
@@ -288,6 +571,17 @@ void MainWindow::openSerial()
 
 void MainWindow::closeSerial()
 {
+    if (isRemoteMode()) {
+        if (socket_ && socket_->state() == QAbstractSocket::ConnectedState) {
+            sendRemoteRequest("close");
+        }
+        remoteOpenPending_ = false;
+        remoteSerialOpen_ = false;
+        openBtn_->setEnabled(true);
+        closeBtn_->setEnabled(false);
+        return;
+    }
+
     if (worker_) {
         QMetaObject::invokeMethod(worker_, "closePort", Qt::BlockingQueuedConnection);
     }
@@ -299,10 +593,41 @@ void MainWindow::closeSerial()
 
 void MainWindow::sendCommand()
 {
-    if (socket_->isOpen()) {
-        QString data = commandLine_->text();
-        data.append(eolMode_);
-        socket_->write(data.toUtf8());
+    QString cmd = commandLine_->text();
+    if (cmd.isEmpty())
+        return;
+
+    if (isRemoteMode()) {
+        if (!remoteSerialOpen_) {
+            QMessageBox::warning(this, "Warning", "Remote serial port not open");
+            return;
+        }
+
+        if (!socket_ || socket_->state() != QAbstractSocket::ConnectedState) {
+            QMessageBox::warning(this, "Warning", "Remote connection is not available");
+            return;
+        }
+
+        addCommandToHistory(cmd);
+        cmd.append(eolMode_);
+
+        QJsonObject payload;
+        if (sendHex_->isChecked()) {
+            QByteArray bytes;
+            QStringList parts = cmd.split(' ', Qt::SkipEmptyParts);
+            for (const QString &p : qAsConst(parts))
+                bytes.append(static_cast<char>(p.toUInt(nullptr, 16)));
+            payload["encoding"] = "base64";
+            payload["data"] = QString::fromLatin1(bytes.toBase64());
+            sendRemoteRequest("write", payload);
+            log("TX (HEX): " + cmd);
+        } else {
+            QByteArray data = cmd.toUtf8();
+            payload["encoding"] = "base64";
+            payload["data"] = QString::fromLatin1(data.toBase64());
+            sendRemoteRequest("write", payload);
+            log("TX: " + cmd);
+        }
         return;
     }
 
@@ -310,10 +635,6 @@ void MainWindow::sendCommand()
         QMessageBox::warning(this, "Warning", "Serial port not open");
         return;
     }
-
-    QString cmd = commandLine_->text();
-    if (cmd.isEmpty())
-        return;
 
     // Add command to history if it's not empty
     addCommandToHistory(cmd);
@@ -344,9 +665,16 @@ void MainWindow::sendCommand()
 
 void MainWindow::sendAllCommands()
 {
-    if (!worker_ || !isWorkerPortOpen()) {
-        QMessageBox::warning(this, "Warning", "Serial port not open");
-        return;
+    if (isRemoteMode()) {
+        if (!remoteSerialOpen_) {
+            QMessageBox::warning(this, "Warning", "Remote serial port not open");
+            return;
+        }
+    } else {
+        if (!worker_ || !isWorkerPortOpen()) {
+            QMessageBox::warning(this, "Warning", "Serial port not open");
+            return;
+        }
     }
 
     if (!cmdListView_)
@@ -371,8 +699,27 @@ void MainWindow::setTextAndSendCommand(const QString &cmd)
 
 void MainWindow::readSocketData(void)
 {
-    QByteArray data = socket_->readAll();
-    log(QString::fromUtf8(data));
+    remoteSocketBuffer_.append(socket_->readAll());
+
+    while (true) {
+        const int newLineIndex = remoteSocketBuffer_.indexOf('\n');
+        if (newLineIndex < 0)
+            break;
+
+        const QByteArray rawLine = remoteSocketBuffer_.left(newLineIndex).trimmed();
+        remoteSocketBuffer_.remove(0, newLineIndex + 1);
+        if (rawLine.isEmpty())
+            continue;
+
+        QJsonParseError err;
+        const QJsonDocument doc = QJsonDocument::fromJson(rawLine, &err);
+        if (err.error != QJsonParseError::NoError || !doc.isObject()) {
+            log("Remote raw: " + QString::fromUtf8(rawLine));
+            continue;
+        }
+
+        handleRemoteMessage(doc.object());
+    }
 }
 
 void MainWindow::onDataReceived(const QByteArray &data)

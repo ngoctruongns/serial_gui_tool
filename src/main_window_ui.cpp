@@ -127,8 +127,12 @@ void MainWindow::setupUi()
     deviceCombo_->addItem("Remote");
     deviceCombo_->setCurrentText("Local");
 
+    remoteIpLabel_ = new QLabel(tr("Remote IP:"), this);
     remoteIpLine_ = new QLineEdit(this);
     remoteIpLine_->setPlaceholderText("Enter Remote IP...");
+    remoteUserLabel_ = new QLabel(tr("User:"), this);
+    remoteUserLine_ = new QLineEdit(this);
+    remoteUserLine_->setPlaceholderText("Enter User name...");
 
     // Main area: use a QSplitter so user can resize between log view and
     // the quick-send panel. This lets the command editors and batch area
@@ -180,7 +184,10 @@ void MainWindow::setupUi()
 
     // Select local port or remote port
     serialConfigRow->addWidget(deviceCombo_);
+    serialConfigRow->addWidget(remoteIpLabel_);
     serialConfigRow->addWidget(remoteIpLine_);
+    serialConfigRow->addWidget(remoteUserLabel_);
+    serialConfigRow->addWidget(remoteUserLine_);
 
     QLabel *portLabel = new QLabel(tr("Port:"));
     serialConfigRow->addWidget(portLabel);
@@ -424,6 +431,10 @@ void MainWindow::setupUi()
 
     // Connect UI signals
     connect(loadBtn_, &QPushButton::clicked, this, [this]() { updatePortList(); });
+    connect(deviceCombo_, &QComboBox::currentTextChanged, this, [this](const QString &) {
+        updateRemoteInputVisibility();
+        updatePortList();
+    });
     connect(openBtn_, &QPushButton::clicked, this, &MainWindow::openSerial);
     connect(closeBtn_, &QPushButton::clicked, this, &MainWindow::closeSerial);
     connect(sendBtn_, &QPushButton::clicked, this, &MainWindow::sendCommand);
@@ -595,4 +606,6 @@ void MainWindow::setupUi()
     connect(next, &QShortcut::activated, this, &MainWindow::searchDown);
     QShortcut *prev = new QShortcut(QKeySequence("Shift+F3"), this);
     connect(prev, &QShortcut::activated, this, &MainWindow::searchUp);
+
+    updateRemoteInputVisibility();
 }

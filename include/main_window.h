@@ -5,6 +5,7 @@
 #include <QLineEdit>
 #include <QStringList>
 #include <QColor>
+#include <QHash>
 #include "serial_worker.h"
 #include "plot_widget.h"
 #include "batch_command.h"
@@ -26,6 +27,8 @@ class QDialog;
 class QTcpSocket ;
 class QThread;
 class QGroupBox;
+class QLabel;
+class QJsonObject;
 
 // Custom QLineEdit with arrow key support for command history
 class CommandLineEdit : public QLineEdit
@@ -79,6 +82,14 @@ private slots:
     void updateFilters();
 
 private:
+    bool isRemoteMode() const;
+    QString remoteUserName() const;
+    void updateRemoteInputVisibility();
+    bool ensureRemoteConnected();
+    void sendRemoteRequest(const QString &action);
+    void sendRemoteRequest(const QString &action, const QJsonObject &payload);
+    void handleRemoteMessage(const QJsonObject &message);
+    void handleRemoteResponse(int requestId, const QJsonObject &message);
     void updatePortList();
     void log(const QString &msg);
     void flushLogBuffer(bool force = false);
@@ -119,9 +130,21 @@ private:
     QComboBox *portCombo_;
     QComboBox *baudCombo_;
     CommandLineEdit *commandLine_;
-    QLineEdit *remoteIpLine_;
+    QLabel *remoteIpLabel_ = nullptr;
+    QLineEdit *remoteIpLine_ = nullptr;
+    QLabel *remoteUserLabel_ = nullptr;
+    QLineEdit *remoteUserLine_ = nullptr;
     QLineEdit *searchLine_;
-    QTcpSocket *socket_;
+    QTcpSocket *socket_ = nullptr;
+    QByteArray remoteSocketBuffer_;
+    QString remoteTargetIp_;
+    int remoteNextRequestId_ = 1;
+    QHash<int, QString> remotePendingActions_;
+    bool remoteSerialOpen_ = false;
+    bool remoteOpenPending_ = false;
+    QString remotePendingPort_;
+    int remotePendingBaud_ = 115200;
+    QString remoteOwnerUser_;
     QString logBuffer_;
     QStringList filterKeywords_;
     QPlainTextEdit *filterEditor_;

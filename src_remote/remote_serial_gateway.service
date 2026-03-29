@@ -1,0 +1,15 @@
+[Unit]
+Description=Remote Serial Gateway
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/serial_gui_tool/src_remote
+Environment=PYTHONUNBUFFERED=1
+ExecStart=python3 /home/pi/code_ws/serial_gui_tool/src_remote/remote_serial_gateway.py --host 127.0.0.1 --port 9026
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

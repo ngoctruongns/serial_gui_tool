@@ -14,6 +14,8 @@ This folder contains a lightweight TCP gateway to access serial ports from a rem
 
 - `remote_serial_gateway.py`: gateway server.
 - `requirements.txt`: Python dependencies.
+- `remote_serial_gateway.service`: systemd unit template for Raspberry Pi.
+- `install_systemd_service.sh`: helper script to install/restart the service.
 
 ## Install on remote machine
 
@@ -37,10 +39,34 @@ The server binds to `127.0.0.1` by default for safety.
 ## Connect from local machine via SSH tunnel
 
 ```bash
-ssh -N -L 19026:127.0.0.1:9026 user@REMOTE_IP
+ssh -N -L 9026:127.0.0.1:9026 user@REMOTE_IP
 ```
 
-Then your GUI/client connects to `127.0.0.1:19026`.
+Then your GUI/client connects to `127.0.0.1:9026`.
+
+## Run as systemd service on Raspberry Pi
+
+The provided service file uses these defaults:
+
+- User: `pi`
+- Project path: `/home/pi/serial_gui_tool/src_remote`
+- Bind: `127.0.0.1:9026`
+
+If your Pi path or user is different, edit `remote_serial_gateway.service` first.
+
+Install and start:
+
+```bash
+cd src_remote
+sudo ./install_systemd_service.sh
+```
+
+Check service:
+
+```bash
+sudo systemctl status remote-serial-gateway.service
+sudo journalctl -u remote-serial-gateway.service -f
+```
 
 ## JSON line protocol
 

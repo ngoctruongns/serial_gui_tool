@@ -13,12 +13,16 @@
 #include <QJsonObject>
 #include <QJsonParseError>
 #include <QFileDialog>
+#include <QFormLayout>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QDialogButtonBox>
+#include <QProcess>
 #include <QPushButton>
 #include <QSerialPortInfo>
+#include <QSignalBlocker>
 #include <QTextEdit>
 #include <QTextStream>
 #include <QVBoxLayout>
@@ -30,8 +34,8 @@
 #include <QMetaObject>
 
 namespace {
-constexpr int kLogBufferFlushThreshold = 2 * 1024;
-constexpr int kLogBufferMaxSize = 3 * 1024;
+constexpr int kLogBufferFlushThreshold = 1 * 1024;
+constexpr int kLogBufferMaxSize = 2 * 1024;
 constexpr int kSerialUiFlushIntervalMs = 20;
 constexpr int kSearchDebounceMs = 180;
 constexpr int kCompleterDebounceMs = 350;
@@ -149,6 +153,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
 
     // Load settings
     loadSettings();
+    loadRecentRemoteMachines();
 
     // Update auto-scroll checkbox based on loaded settings
     if (autoScrollCheck_) {
@@ -264,6 +269,11 @@ bool MainWindow::isRemoteMode() const
     return deviceCombo_ && deviceCombo_->currentText() == "Remote";
 }
 
+QString MainWindow::remoteAliasName() const
+{
+    return remoteAlias_.trimmed();
+}
+
 QString MainWindow::remoteUserName() const
 {
     if (!remoteUserLine_)
@@ -271,18 +281,311 @@ QString MainWindow::remoteUserName() const
     return remoteUserLine_->text().trimmed();
 }
 
+void MainWindow::loadRecentRemoteMachines()
+{
+    recentRemoteMachines_.clear();
+
+    const QString content = loadFromFile(RECENT_REMOTE_FILE_PATH);
+    if (content.trimmed().isEmpty())
+        return;
+
+    QJsonParseError parseError;
+    const QJsonDocument doc = QJsonDocument::fromJson(content.toUtf8(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isArray()) {
+        return;
+    }
+
+    const QJsonArray arr = doc.array();
+    for (const QJsonValue &value : arr) {
+        if (!value.isObject())
+            continue;
+
+        const QJsonObject obj = value.toObject();
+        RemoteMachineInfo info;
+        info.alias = obj.value("alias").toString().trimmed();
+        info.user = obj.value("user").toString().trimmed();
+        info.ip = obj.value("ip").toString().trimmed();
+        if (info.user.isEmpty() || info.ip.isEmpty())
+            continue;
+
+        recentRemoteMachines_.append(info);
+        if (recentRemoteMachines_.size() >= 5)
+            break;
+    }
+
+    if (!recentRemoteMachines_.isEmpty()) {
+        const RemoteMachineInfo &latest = recentRemoteMachines_.first();
+        remoteAlias_ = latest.alias;
+        if (remoteUserLine_)
+            remoteUserLine_->setText(latest.user);
+        if (remoteIpLine_)
+            remoteIpLine_->setText(latest.ip);
+    }
+}
+
+void MainWindow::saveRecentRemoteMachines()
+{
+    QJsonArray arr;
+    for (const RemoteMachineInfo &info : recentRemoteMachines_) {
+        QJsonObject obj;
+        obj["alias"] = info.alias;
+        obj["user"] = info.user;
+        obj["ip"] = info.ip;
+        arr.append(obj);
+    }
+
+    const QJsonDocument doc(arr);
+    saveToFile(RECENT_REMOTE_FILE_PATH, QString::fromUtf8(doc.toJson(QJsonDocument::Compact)));
+}
+
+void MainWindow::addRecentRemoteMachine(const QString &alias, const QString &user, const QString &ip)
+{
+    const QString a = alias.trimmed();
+    const QString u = user.trimmed();
+    const QString h = ip.trimmed();
+    if (u.isEmpty() || h.isEmpty())
+        return;
+
+    for (int i = recentRemoteMachines_.size() - 1; i >= 0; --i) {
+        const RemoteMachineInfo &item = recentRemoteMachines_.at(i);
+        if (item.user.compare(u, Qt::CaseInsensitive) == 0 &&
+            item.ip.compare(h, Qt::CaseInsensitive) == 0) {
+            recentRemoteMachines_.removeAt(i);
+        }
+    }
+
+    RemoteMachineInfo info;
+    info.alias = a;
+    info.user = u;
+    info.ip = h;
+    recentRemoteMachines_.prepend(info);
+
+    while (recentRemoteMachines_.size() > 5) {
+        recentRemoteMachines_.removeLast();
+    }
+
+    saveRecentRemoteMachines();
+}
+
+bool MainWindow::promptRemoteConnectionInfo()
+{
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Remote Connection"));
+
+    QFormLayout *formLayout = new QFormLayout(&dialog);
+
+    QComboBox *recentCombo = new QComboBox(&dialog);
+    recentCombo->addItem(tr("Select recent machine"));
+    for (int i = 0; i < recentRemoteMachines_.size(); ++i) {
+        const RemoteMachineInfo &item = recentRemoteMachines_.at(i);
+        QString display = item.alias;
+        if (display.isEmpty())
+            display = item.user + "@" + item.ip;
+        else
+            display = QString("%1 (%2@%3)").arg(item.alias, item.user, item.ip);
+        recentCombo->addItem(display, i);
+    }
+
+    QLineEdit *aliasEdit = new QLineEdit(&dialog);
+    aliasEdit->setPlaceholderText(tr("remote_alias"));
+    aliasEdit->setText(remoteAlias_.trimmed());
+
+    QLineEdit *userEdit = new QLineEdit(&dialog);
+    userEdit->setPlaceholderText(tr("remote_user"));
+
+    QLineEdit *ipEdit = new QLineEdit(&dialog);
+    ipEdit->setPlaceholderText(tr("remote_ip"));
+
+    // Pre-fill with latest recent machine if available.
+    if (!recentRemoteMachines_.isEmpty()) {
+        const RemoteMachineInfo &latest = recentRemoteMachines_.first();
+        if (aliasEdit->text().trimmed().isEmpty())
+            aliasEdit->setText(latest.alias);
+        userEdit->setText(latest.user);
+        ipEdit->setText(latest.ip);
+        recentCombo->setCurrentIndex(1);
+    } else {
+        if (remoteUserLine_)
+            userEdit->setText(remoteUserLine_->text().trimmed());
+        if (remoteIpLine_)
+            ipEdit->setText(remoteIpLine_->text().trimmed());
+    }
+
+    connect(recentCombo,
+            QOverload<int>::of(&QComboBox::currentIndexChanged),
+            &dialog,
+            [this, recentCombo, aliasEdit, userEdit, ipEdit](int index) {
+                if (index <= 0)
+                    return;
+                const int itemIndex = recentCombo->itemData(index).toInt();
+                if (itemIndex < 0 || itemIndex >= recentRemoteMachines_.size())
+                    return;
+                const RemoteMachineInfo &item = recentRemoteMachines_.at(itemIndex);
+                aliasEdit->setText(item.alias);
+                userEdit->setText(item.user);
+                ipEdit->setText(item.ip);
+            });
+
+    formLayout->addRow(tr("recent_remote"), recentCombo);
+    formLayout->addRow(tr("remote_alias"), aliasEdit);
+    formLayout->addRow(tr("remote_user"), userEdit);
+    formLayout->addRow(tr("remote_ip"), ipEdit);
+
+    QDialogButtonBox *buttons =
+        new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    formLayout->addRow(buttons);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+    if (dialog.exec() != QDialog::Accepted)
+        return false;
+
+    const QString alias = aliasEdit->text().trimmed();
+    const QString user = userEdit->text().trimmed();
+    const QString ip = ipEdit->text().trimmed();
+    if (user.isEmpty() || ip.isEmpty()) {
+        QMessageBox::warning(this, "Warning", "remote_user and remote_ip are required");
+        return false;
+    }
+
+    remoteAlias_ = alias;
+    if (remoteUserLine_)
+        remoteUserLine_->setText(user);
+    if (remoteIpLine_)
+        remoteIpLine_->setText(ip);
+
+    addRecentRemoteMachine(alias, user, ip);
+
+    return true;
+}
+
+bool MainWindow::startRemoteSshTunnel()
+{
+    if (!remoteIpLine_ || !remoteUserLine_)
+        return false;
+
+    const QString user = remoteUserLine_->text().trimmed();
+    const QString ip = remoteIpLine_->text().trimmed();
+    if (user.isEmpty() || ip.isEmpty()) {
+        QMessageBox::warning(this, "Warning", "remote_user and remote_ip are required");
+        return false;
+    }
+
+    const QString target = QString("%1@%2").arg(user, ip);
+    if (remoteSshTunnelProcess_ && remoteSshTunnelProcess_->state() != QProcess::NotRunning &&
+        remoteSshTarget_ == target) {
+        return true;
+    }
+
+    stopRemoteSshTunnel();
+
+    remoteSshTunnelProcess_ = new QProcess(this);
+    remoteSshTunnelProcess_->setProcessChannelMode(QProcess::SeparateChannels);
+
+    connect(remoteSshTunnelProcess_,
+            &QProcess::readyReadStandardError,
+            this,
+            [this]() {
+                if (!remoteSshTunnelProcess_)
+                    return;
+                const QString err =
+                    QString::fromUtf8(remoteSshTunnelProcess_->readAllStandardError()).trimmed();
+                if (!err.isEmpty())
+                    log("SSH tunnel: " + err);
+            });
+
+    connect(remoteSshTunnelProcess_,
+            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this,
+            [this](int exitCode, QProcess::ExitStatus) {
+                log(QString("SSH tunnel stopped (exit=%1)").arg(exitCode));
+                if (isRemoteMode()) {
+                    QMessageBox::warning(
+                        this,
+                        "SSH Tunnel",
+                        "SSH tunnel exited. Ensure SSH key login works for remote_user@remote_ip.");
+                }
+            });
+
+    QStringList args;
+    args << "-N"
+         << "-L"
+         << "9026:127.0.0.1:9026"
+         << "-o"
+         << "ExitOnForwardFailure=yes"
+         << "-o"
+         << "ServerAliveInterval=30"
+         << "-o"
+         << "ServerAliveCountMax=3"
+         << "-o"
+         << "BatchMode=yes"
+         << target;
+
+    remoteSshTunnelProcess_->start("ssh", args);
+    if (!remoteSshTunnelProcess_->waitForStarted(5000)) {
+        const QString err = remoteSshTunnelProcess_->errorString();
+        remoteSshTunnelProcess_->deleteLater();
+        remoteSshTunnelProcess_ = nullptr;
+        QMessageBox::warning(this, "SSH Tunnel", "Cannot start SSH tunnel: " + err);
+        return false;
+    }
+
+    remoteSshTarget_ = target;
+    if (!remoteAliasName().isEmpty())
+        log(QString("SSH tunnel started: %1 (%2)").arg(remoteAliasName(), target));
+    else
+        log("SSH tunnel started: " + target);
+    return true;
+}
+
+void MainWindow::stopRemoteSshTunnel()
+{
+    if (!remoteSshTunnelProcess_)
+        return;
+
+    if (remoteSshTunnelProcess_->state() != QProcess::NotRunning) {
+        remoteSshTunnelProcess_->terminate();
+        if (!remoteSshTunnelProcess_->waitForFinished(2000)) {
+            remoteSshTunnelProcess_->kill();
+            remoteSshTunnelProcess_->waitForFinished(1000);
+        }
+    }
+
+    remoteSshTunnelProcess_->deleteLater();
+    remoteSshTunnelProcess_ = nullptr;
+    remoteSshTarget_.clear();
+}
+
 void MainWindow::updateRemoteInputVisibility()
 {
     const bool remote = isRemoteMode();
 
+    // Remote IP/User are collected through dialog instead of inline fields.
     if (remoteIpLabel_)
-        remoteIpLabel_->setVisible(remote);
+        remoteIpLabel_->setVisible(false);
     if (remoteIpLine_)
-        remoteIpLine_->setVisible(remote);
+        remoteIpLine_->setVisible(false);
     if (remoteUserLabel_)
-        remoteUserLabel_->setVisible(remote);
+        remoteUserLabel_->setVisible(false);
     if (remoteUserLine_)
-        remoteUserLine_->setVisible(remote);
+        remoteUserLine_->setVisible(false);
+
+    if (remote) {
+        if (!promptRemoteConnectionInfo() || !startRemoteSshTunnel()) {
+            remoteOpenPending_ = false;
+            remoteSerialOpen_ = false;
+            remoteOwnerUser_.clear();
+            remotePendingActions_.clear();
+            remoteSocketBuffer_.clear();
+            if (socket_ && socket_->state() != QAbstractSocket::UnconnectedState) {
+                socket_->disconnectFromHost();
+            }
+            stopRemoteSshTunnel();
+            const QSignalBlocker blocker(deviceCombo_);
+            deviceCombo_->setCurrentText("Local");
+            return;
+        }
+    }
 
     if (!remote) {
         remoteOpenPending_ = false;
@@ -293,6 +596,7 @@ void MainWindow::updateRemoteInputVisibility()
         if (socket_ && socket_->state() != QAbstractSocket::UnconnectedState) {
             socket_->disconnectFromHost();
         }
+        stopRemoteSshTunnel();
     }
 }
 
@@ -302,11 +606,11 @@ bool MainWindow::ensureRemoteConnected()
         return false;
     }
 
-    const QString ipAddr = remoteIpLine_ ? remoteIpLine_->text().trimmed() : QString();
-    if (ipAddr.isEmpty()) {
-        QMessageBox::warning(this, "Warning", "Please enter remote IP address");
+    if (!startRemoteSshTunnel()) {
         return false;
     }
+
+    const QString ipAddr = QStringLiteral("127.0.0.1");
 
     if (socket_->state() == QAbstractSocket::ConnectedState && remoteTargetIp_ == ipAddr) {
         return true;
@@ -1066,6 +1370,11 @@ void MainWindow::saveFile()
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
+    if (socket_ && socket_->state() != QAbstractSocket::UnconnectedState) {
+        socket_->disconnectFromHost();
+    }
+    stopRemoteSshTunnel();
+
     flushLogBuffer(true);
 
     // Auto-save log if option is enabled and there's content

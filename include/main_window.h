@@ -16,6 +16,7 @@
 #define QUICK_COMMAND_FILE_PATH "cmd/quick_command.txt"
 #define QUICK_GROUP_FILE_PATH "cmd/quick_groups.txt"
 #define SETTING_FILE_PATH "cmd/settings.txt"
+#define RECENT_REMOTE_FILE_PATH "cmd/recent_remote_hosts.json"
 
 class QTextEdit;
 class QPlainTextEdit;
@@ -29,6 +30,7 @@ class QThread;
 class QGroupBox;
 class QLabel;
 class QJsonObject;
+class QProcess;
 
 // Custom QLineEdit with arrow key support for command history
 class CommandLineEdit : public QLineEdit
@@ -82,8 +84,21 @@ private slots:
     void updateFilters();
 
 private:
+    struct RemoteMachineInfo {
+        QString alias;
+        QString user;
+        QString ip;
+    };
+
     bool isRemoteMode() const;
+    QString remoteAliasName() const;
     QString remoteUserName() const;
+    void loadRecentRemoteMachines();
+    void saveRecentRemoteMachines();
+    void addRecentRemoteMachine(const QString &alias, const QString &user, const QString &ip);
+    bool promptRemoteConnectionInfo();
+    bool startRemoteSshTunnel();
+    void stopRemoteSshTunnel();
     void updateRemoteInputVisibility();
     bool ensureRemoteConnected();
     void sendRemoteRequest(const QString &action);
@@ -145,6 +160,10 @@ private:
     QString remotePendingPort_;
     int remotePendingBaud_ = 115200;
     QString remoteOwnerUser_;
+    QString remoteAlias_;
+    QString remoteSshTarget_;
+    QProcess *remoteSshTunnelProcess_ = nullptr;
+    QVector<RemoteMachineInfo> recentRemoteMachines_;
     QString logBuffer_;
     QStringList filterKeywords_;
     QPlainTextEdit *filterEditor_;
